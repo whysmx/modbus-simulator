@@ -411,7 +411,7 @@ public class RegisterRepositoryTests : IDisposable
         await _connection.ExecuteAsync(connectionSql, new
         {
             Id = connectionId,
-            Name = "Test Connection",
+            Name = $"Test Connection {Guid.NewGuid():N}",  // 使用唯一名称避免冲突
             Port = randomPort
         });
 

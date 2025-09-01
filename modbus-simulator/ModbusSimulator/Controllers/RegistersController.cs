@@ -32,6 +32,11 @@ public class RegistersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Register>> CreateRegister(string connectionId, string slaveId, [FromBody] CreateRegisterRequest request)
     {
+        if (request == null)
+        {
+            return BadRequest(new { error = "请求不能为空" });
+        }
+        
         try
         {
             var register = new Register 
@@ -41,7 +46,7 @@ public class RegistersController : ControllerBase
                 Hexdata = request.Hexdata 
             };
             var created = await _registerRepository.CreateAsync(register);
-            return StatusCode(201, created);
+            return CreatedAtAction(nameof(GetRegisters), new { connectionId, slaveId }, created);
         }
         catch (KeyNotFoundException ex)
         {
@@ -56,6 +61,11 @@ public class RegistersController : ControllerBase
     [HttpPut("{registerId}")]
     public async Task<ActionResult<Register>> UpdateRegister(string connectionId, string slaveId, string registerId, [FromBody] UpdateRegisterRequest request)
     {
+        if (request == null)
+        {
+            return BadRequest(new { error = "请求不能为空" });
+        }
+        
         try
         {
             var register = new Register 

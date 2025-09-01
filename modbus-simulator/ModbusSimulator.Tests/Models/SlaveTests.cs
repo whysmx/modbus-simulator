@@ -128,8 +128,8 @@ public class SlaveTests
     }
 
     [Theory]
-    [InlineData("1234567890abcdef", true)]     // Valid connection ID
-    [InlineData("ABCDEF1234567890", true)]     // Valid uppercase
+    [InlineData("1234567890abcdef1234567890abcdef", true)]     // Valid connection ID (32 chars)
+    [InlineData("ABCDEF1234567890ABCDEF1234567890", true)]     // Valid uppercase (32 chars)
     [InlineData("", false)]                    // Empty connection ID
     [InlineData("invalid-id", false)]          // Invalid format
     public void Slave_Should_Validate_Connid_Format(string connid, bool isValid)
