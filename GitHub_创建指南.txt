@@ -1,0 +1,40 @@
+GitHub仓库创建指南
+==================
+
+方法1：使用GitHub CLI（推荐，自动化）
+----------------------------------------
+1. 安装GitHub CLI：https://cli.github.com/
+2. 打开命令行，运行：
+   gh auth login
+3. 然后运行：
+   gh repo create modbus-simulator --public --description "Modbus协议模拟器项目，包含C#后端API和完整文档" --source=. --remote=origin --push
+
+方法2：手动创建仓库
+--------------------
+1. 打开浏览器，访问：https://github.com/new
+2. 填写信息：
+   - Repository name: modbus-simulator
+   - Description: Modbus协议模拟器项目，包含C#后端API和完整文档
+   - 选择公开（Public）或私有（Private）
+3. 不要勾选以下选项：
+   - Add a README file
+   - Add .gitignore
+   - Choose a license
+4. 点击"Create repository"
+5. 复制创建后的仓库URL（类似：https://github.com/YOUR_USERNAME/modbus-simulator.git）
+
+方法3：手动推送（如果自动创建失败）
+------------------------------------
+创建仓库后，告诉我仓库URL，我会帮您运行以下命令：
+
+git remote add origin YOUR_REPO_URL
+git branch -M main
+git push -u origin main
+
+您的项目已经准备好推送，包含：
+- C# Modbus模拟器后端
+- 完整的单元测试
+- 项目文档
+- 合适的.gitignore配置
+
+请按照上述方法之一创建GitHub仓库，然后告诉我仓库URL！
