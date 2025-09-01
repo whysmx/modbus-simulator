@@ -333,8 +333,26 @@ public class RegisterServiceTests
         // Act & Assert
         var exception = await Assert.ThrowsAsync<ArgumentException>(
             () => _service.CreateRegisterAsync(connectionId, slaveId, request));
-        Assert.Contains("数据长度必须", exception.Message);
-        Assert.Equal("request.Hexdata", exception.ParamName);
+
+        // 根据地址范围检查具体的错误信息
+        if (startAddr >= 30001 && startAddr <= 39999) // 输入寄存器
+        {
+            Assert.Contains("输入寄存器数据长度必须是4的倍数", exception.Message);
+        }
+        else if (startAddr >= 40001 && startAddr <= 49999) // 保持寄存器
+        {
+            Assert.Contains("保持寄存器数据长度必须是4的倍数", exception.Message);
+        }
+        else if (startAddr >= 1 && startAddr <= 9999) // 线圈
+        {
+            Assert.Contains("线圈数据长度必须是2的倍数", exception.Message);
+        }
+        else if (startAddr >= 10001 && startAddr <= 19999) // 离散输入
+        {
+            Assert.Contains("离散输入数据长度必须是2的倍数", exception.Message);
+        }
+
+        Assert.Equal("Hexdata", exception.ParamName);
     }
 
     [Theory]

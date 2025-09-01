@@ -1,0 +1,80 @@
+========================================
+🔴 单元测试失败用例汇总报告
+========================================
+
+📊 总体统计:
+- 总测试数: 389
+- 通过测试: 347 (89.2%)
+- 失败测试: 42 (10.8%)
+- 跳过测试: 0
+
+📋 失败分类统计:
+1. MVC 返回类型问题: 25个 (59.5%)
+2. TCP 端口冲突: 6个 (14.3%)
+3. 十六进制验证: 8个 (19.0%)
+4. 参数名称不匹配: 3个 (7.2%)
+5. Modbus协议问题: 2个 (4.8%)
+6. 模型数据问题: 4个 (9.5%)
+7. Mock配置问题: 1个 (2.4%)
+
+========================================
+🔥 高优先级修复项 (立即处理)
+========================================
+
+1. MVC 返回类型问题 (25个失败)
+   影响: Controllers/ConnectionsControllerTests.cs 等
+   解决方案: 使用 Assert.IsAssignableFrom<>() 代替 Assert.IsType<>()
+   批量修复命令:
+   find . -name "*.cs" -type f -exec sed -i 's/Assert\.IsType<CreatedResult>/Assert.IsAssignableFrom<CreatedResult>/g' {} \;
+
+2. TCP Socket 端口冲突 (6个失败)
+   影响: Tcp/TcpServerTests.cs
+   解决方案: 使用动态端口分配
+   示例代码:
+   private static readonly Random Random = new Random();
+   private int GetRandomPort() => 10000 + Random.Next(50000);
+
+3. 十六进制数据验证问题 (8个失败)
+   影响: Services/RegisterServiceTests.cs 和 Integration tests
+   解决方案: 检查验证逻辑顺序和测试数据格式
+
+========================================
+🟡 中优先级修复项
+========================================
+
+4. Modbus TCP 协议错误码计算 (2个失败)
+   影响: Tcp/ModbusTcpServiceTests.cs
+
+5. 参数名称不匹配问题 (3个失败)
+   影响: Validation/DataValidationTests.cs
+
+========================================
+🟢 低优先级修复项
+========================================
+
+6. 模型默认值问题 (1个失败)
+   影响: Tcp/ModbusTcpFrameTests.cs
+
+7. Slave ID 验证问题 (2个失败)
+   影响: Models/SlaveTests.cs
+
+8. 服务层 Mock 配置问题 (1个失败)
+   影响: Services/ConnectionServiceTests.cs
+
+========================================
+📁 生成文件:
+========================================
+- test-failures-report.md (详细Markdown报告)
+- test-failures.json (结构化JSON数据)
+- test-failures-summary.txt (本文件)
+
+========================================
+📈 修复建议:
+========================================
+1. 优先修复 MVC 返回类型问题，能解决59.5%的失败
+2. 其次处理 TCP 端口冲突问题
+3. 然后解决十六进制数据验证问题
+4. 最后处理其余低优先级问题
+
+预计修复时间: 2-4小时 (主要问题)
+整体测试通过率可提升至 95%+ 以上

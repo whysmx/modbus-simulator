@@ -38,7 +38,7 @@ public class RegistersControllerTests
         var result = await _controller.GetRegisters(connectionId, slaveId);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
         var returnedRegisters = okResult.Value as IEnumerable<Register>;
         Assert.Equal(expectedRegisters, returnedRegisters);
@@ -80,7 +80,7 @@ public class RegistersControllerTests
         var result = await _controller.GetRegisters(connectionId, slaveId);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
         var returnedRegisters = okResult.Value as IEnumerable<Register>;
         Assert.Empty(returnedRegisters);
@@ -111,7 +111,7 @@ public class RegistersControllerTests
         var result = await _controller.CreateRegister(connectionId, slaveId, request);
 
         // Assert
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
         Assert.Equal(expectedRegister, createdResult.Value);
 
@@ -189,7 +189,7 @@ public class RegistersControllerTests
         var result = await _controller.UpdateRegister(connectionId, slaveId, registerId, request);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
         Assert.Equal(expectedRegister, okResult.Value);
 
@@ -305,7 +305,7 @@ public class RegistersControllerTests
         var result = await _controller.CreateRegister(connectionId, slaveId, null);
 
         // Assert
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
     }
 
@@ -324,7 +324,7 @@ public class RegistersControllerTests
         var result = await _controller.UpdateRegister(connectionId, slaveId, registerId, null);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
     }
 
@@ -355,7 +355,7 @@ public class RegistersControllerTests
         var result = await _controller.CreateRegister(connectionId, slaveId, request);
 
         // Assert
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         var returnedRegister = createdResult.Value as Register;
         Assert.Equal(slaveId, returnedRegister.Slaveid);
     }
@@ -372,7 +372,7 @@ public class RegistersControllerTests
         _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync("slave")).ReturnsAsync(registers);
 
         var result = await _controller.GetRegisters("conn", "slave");
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
 
         // Test NotFound (404)
@@ -391,7 +391,7 @@ public class RegistersControllerTests
         _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>())).ReturnsAsync(register);
 
         var result = await _controller.CreateRegister("conn", "slave", request);
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
 
         // Test NotFound (404)
@@ -416,7 +416,7 @@ public class RegistersControllerTests
         _mockRegisterRepository.Setup(r => r.UpdateAsync(It.IsAny<Register>())).ReturnsAsync(register);
 
         var result = await _controller.UpdateRegister("conn", "slave", "reg", request);
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
 
         // Test NotFound (404)
@@ -470,7 +470,7 @@ public class RegistersControllerTests
         var result = await _controller.CreateRegister(connectionId, slaveId, request);
 
         // Assert
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
     }
 

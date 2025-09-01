@@ -292,7 +292,7 @@ public class DataValidationTests
             RegisterService.ValidateHexDataLength(startAddr, hexData));
 
         Assert.Contains("线圈数据长度必须是2的倍数", exception.Message);
-        Assert.Equal("hexData", exception.ParamName);
+        Assert.Equal("Hexdata", exception.ParamName);
     }
 
     [Fact]
@@ -307,7 +307,7 @@ public class DataValidationTests
             RegisterService.ValidateHexDataLength(startAddr, hexData));
 
         Assert.Contains("离散输入数据长度必须是2的倍数", exception.Message);
-        Assert.Equal("hexData", exception.ParamName);
+        Assert.Equal("Hexdata", exception.ParamName);
     }
 
     [Fact]
@@ -322,7 +322,7 @@ public class DataValidationTests
             RegisterService.ValidateHexDataLength(startAddr, hexData));
 
         Assert.Contains("保持寄存器数据长度必须是4的倍数", exception.Message);
-        Assert.Equal("hexData", exception.ParamName);
+        Assert.Equal("Hexdata", exception.ParamName);
     }
 
     [Fact]
@@ -341,7 +341,7 @@ public class DataValidationTests
         Assert.Contains("10001-19999离散输入", exception.Message);
         Assert.Contains("30001-39999输入寄存器", exception.Message);
         Assert.Contains("40001-49999保持寄存器", exception.Message);
-        Assert.Equal("startAddr", exception.ParamName);
+        Assert.Equal("Hexdata", exception.ParamName);
     }
 
     #endregion

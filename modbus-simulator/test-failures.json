@@ -1,0 +1,172 @@
+{
+  "summary": {
+    "total_tests": 389,
+    "passed_tests": 347,
+    "failed_tests": 42,
+    "skipped_tests": 0,
+    "pass_rate": "89.2%",
+    "generated_at": "2024-12-19T00:00:00Z"
+  },
+  "failures": {
+    "asp_net_mvc_issues": {
+      "count": 25,
+      "percentage": "59.5%",
+      "description": "ASP.NET Core MVC 返回类型问题",
+      "tests": [
+        "ModbusSimulator.Tests.Controllers.ConnectionsControllerTests.CreateConnection_ValidRequest_ReturnsCreatedResult",
+        "ModbusSimulator.Tests.Controllers.RegistersControllerTests.CreateRegister_VariousRouteParameters_ShouldPassThrough",
+        "ModbusSimulator.Tests.Controllers.RegistersControllerTests.CreateRegister_VariousValidData_ShouldSucceed",
+        "ModbusSimulator.Tests.Controllers.RegistersControllerTests.CreateRegister_ShouldReturnCorrectHttpStatusCodes",
+        "ModbusSimulator.Tests.Controllers.RegistersControllerTests.CreateRegister_NullRequest_ShouldHandleGracefully",
+        "ModbusSimulator.Tests.Controllers.RegistersControllerTests.CreateRegister_ValidRequest_ShouldReturnCreatedResult",
+        "ModbusSimulator.Tests.Controllers.RegistersControllerTests.UpdateRegister_NullRequest_ShouldHandleGracefully",
+        "ModbusSimulator.Tests.Controllers.SlavesControllerTests.CreateSlave_VariousRouteParameters_ShouldPassThrough",
+        "ModbusSimulator.Tests.Controllers.SlavesControllerTests.CreateSlave_ShouldReturnCorrectHttpStatusCodes",
+        "ModbusSimulator.Tests.Controllers.SlavesControllerTests.CreateSlave_NullRequest_ShouldHandleGracefully",
+        "ModbusSimulator.Tests.Controllers.SlavesControllerTests.CreateSlave_ValidRequest_ShouldReturnCreatedResult",
+        "ModbusSimulator.Tests.Controllers.SlavesControllerTests.UpdateSlave_NullRequest_ShouldHandleGracefully",
+        "ModbusSimulator.Tests.Controllers.SlavesControllerTests.CreateSlave_GenericException_ShouldReturnBadRequest"
+      ],
+      "error_type": "MVC_RETURN_TYPE_MISMATCH",
+      "solution": "使用 Assert.IsAssignableFrom<>() 代替 Assert.IsType<>()"
+    },
+    "tcp_port_conflicts": {
+      "count": 6,
+      "percentage": "14.3%",
+      "description": "TCP Socket 端口冲突问题",
+      "tests": [
+        "ModbusSimulator.Tests.Tcp.TcpServerTests.StartAsync_WithValidPorts_CreatesListeners",
+        "ModbusSimulator.Tests.Tcp.TcpServerTests.StopAsync_WithValidPort_RemovesListener",
+        "ModbusSimulator.Tests.Tcp.TcpServerTests.StopAllAsync_StopsAllListeners",
+        "ModbusSimulator.Tests.Tcp.TcpServerTests.ProtocolHandler_ProcessRequestAsync_IsCalled",
+        "ModbusSimulator.Tests.Tcp.TcpServerTests.StartAsync_EmptyPortDictionary_DoesNotThrow"
+      ],
+      "error_type": "TCP_PORT_CONFLICT",
+      "solution": "使用动态端口分配或更好的资源清理"
+    },
+    "hex_validation_issues": {
+      "count": 8,
+      "percentage": "19.0%",
+      "description": "十六进制数据验证问题",
+      "tests": [
+        "ModbusSimulator.Tests.Services.RegisterServiceTests.CreateRegisterAsync_InvalidHexdataLength_ShouldThrowArgumentException",
+        "ModbusSimulator.Tests.Integration.ModbusIntegrationTests.ConcurrentOperations_ShouldMaintainDataIntegrity",
+        "ModbusSimulator.Tests.Integration.ModbusIntegrationTests.ModbusBulkOperations_ShouldMaintainPerformanceAndConsistency"
+      ],
+      "error_type": "HEX_DATA_VALIDATION",
+      "solution": "检查验证逻辑顺序和测试数据格式"
+    },
+    "parameter_name_mismatch": {
+      "count": 3,
+      "percentage": "7.2%",
+      "description": "参数名称不匹配问题",
+      "tests": [
+        "ModbusSimulator.Tests.Validation.DataValidationTests.ValidateHexDataLength_InvalidCoilLength_ProvidesCorrectErrorMessage",
+        "ModbusSimulator.Tests.Validation.DataValidationTests.ValidateHexDataLength_InvalidDiscreteInputLength_ProvidesCorrectErrorMessage",
+        "ModbusSimulator.Tests.Validation.DataValidationTests.ValidateHexDataLength_InvalidRegisterLength_ProvidesCorrectErrorMessage",
+        "ModbusSimulator.Tests.Validation.DataValidationTests.ValidateHexDataLength_InvalidAddressRange_ProvidesCorrectErrorMessage"
+      ],
+      "error_type": "PARAMETER_NAME_MISMATCH",
+      "solution": "统一参数名的大小写格式"
+    },
+    "modbus_protocol_issues": {
+      "count": 2,
+      "percentage": "4.8%",
+      "description": "Modbus TCP 协议问题",
+      "tests": [
+        "ModbusSimulator.Tests.Tcp.ModbusTcpServiceTests.ProcessRequestAsync_ErrorResponse_HasCorrectStructure",
+        "ModbusSimulator.Tests.Tcp.ModbusTcpServiceTests.ProcessRequestAsync_ErrorFunctionCode_IsCalculatedCorrectly"
+      ],
+      "error_type": "MODBUS_PROTOCOL_ERROR",
+      "solution": "修复错误响应函数码计算逻辑"
+    },
+    "model_data_issues": {
+      "count": 4,
+      "percentage": "9.5%",
+      "description": "模型和数据问题",
+      "tests": [
+        "ModbusSimulator.Tests.Tcp.ModbusTcpFrameTests.ModbusTcpFrame_DefaultValues_AreCorrect",
+        "ModbusSimulator.Tests.Models.SlaveTests.Slave_Should_Validate_Id_Format",
+        "ModbusSimulator.Tests.Services.SlaveServiceTests.UpdateSlaveAsync_NonExistentSlave_ShouldThrowKeyNotFoundException"
+      ],
+      "error_type": "MODEL_DATA_ISSUE",
+      "solution": "检查模型初始化逻辑和验证规则"
+    },
+    "mock_setup_issues": {
+      "count": 1,
+      "percentage": "2.4%",
+      "description": "服务层 Mock 配置问题",
+      "tests": [
+        "ModbusSimulator.Tests.Services.ConnectionServiceTests.CreateConnectionAsync_ValidRequest_ShouldCreateSuccessfully"
+      ],
+      "error_type": "MOCK_SETUP_ERROR",
+      "solution": "调整 Mock 设置条件以匹配实际调用"
+    }
+  },
+  "fix_priorities": {
+    "high_priority": [
+      {
+        "category": "asp_net_mvc_issues",
+        "impact": "25个测试失败",
+        "difficulty": "低",
+        "description": "ASP.NET Core MVC 返回类型问题"
+      },
+      {
+        "category": "tcp_port_conflicts",
+        "impact": "6个测试失败",
+        "difficulty": "中",
+        "description": "TCP Socket 端口冲突问题"
+      },
+      {
+        "category": "hex_validation_issues",
+        "impact": "8个测试失败",
+        "difficulty": "中",
+        "description": "十六进制数据验证问题"
+      }
+    ],
+    "medium_priority": [
+      {
+        "category": "modbus_protocol_issues",
+        "impact": "2个测试失败",
+        "difficulty": "高",
+        "description": "Modbus TCP 协议问题"
+      },
+      {
+        "category": "parameter_name_mismatch",
+        "impact": "3个测试失败",
+        "difficulty": "低",
+        "description": "参数名称不匹配问题"
+      }
+    ],
+    "low_priority": [
+      {
+        "category": "model_data_issues",
+        "impact": "4个测试失败",
+        "difficulty": "中",
+        "description": "模型和数据问题"
+      },
+      {
+        "category": "mock_setup_issues",
+        "impact": "1个测试失败",
+        "difficulty": "低",
+        "description": "服务层 Mock 配置问题"
+      }
+    ]
+  },
+  "quick_fixes": {
+    "bash_scripts": [
+      "# 修复 MVC 返回类型问题",
+      "find . -name \"*.cs\" -type f -exec sed -i 's/Assert\\.IsType<CreatedResult>/Assert.IsAssignableFrom<CreatedResult>/g' {} \\;",
+      "find . -name \"*.cs\" -type f -exec sed -i 's/Assert\\.IsType<OkObjectResult>/Assert.IsAssignableFrom<OkObjectResult>/g' {} \\;"
+    ],
+    "csharp_code": [
+      "// 修复端口冲突问题 - 添加到测试基类",
+      "private static readonly Random Random = new Random();",
+      "private int GetRandomPort() => 10000 + Random.Next(50000);",
+      "",
+      "// 修复参数名不匹配问题",
+      "// 将 'hexData' 统一为 'Hexdata' 或反之",
+      "// 将 'startAddr' 统一为 'request.Startaddr' 或反之"
+    ]
+  }
+}

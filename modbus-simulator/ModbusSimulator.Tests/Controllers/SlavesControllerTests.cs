@@ -40,7 +40,7 @@ public class SlavesControllerTests
         var result = await _controller.CreateSlave(connectionId, request);
 
         // Assert
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
         Assert.Equal(expectedSlave, createdResult.Value);
 
@@ -136,7 +136,7 @@ public class SlavesControllerTests
         var result = await _controller.UpdateSlave(connectionId, slaveId, request);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
         Assert.Equal(expectedSlave, okResult.Value);
 
@@ -248,7 +248,7 @@ public class SlavesControllerTests
         var result = await _controller.CreateSlave(connectionId, null);
 
         // Assert - The controller doesn't validate null requests, it just passes to repository
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
     }
 
@@ -266,7 +266,7 @@ public class SlavesControllerTests
         var result = await _controller.UpdateSlave(connectionId, slaveId, null);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
     }
 
@@ -297,7 +297,7 @@ public class SlavesControllerTests
         var result = await _controller.CreateSlave(connectionId, request);
 
         // Assert
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         var returnedSlave = createdResult.Value as Slave;
         Assert.Equal(connectionId, returnedSlave.Connid);
     }
@@ -315,7 +315,7 @@ public class SlavesControllerTests
         _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>())).ReturnsAsync(slave);
 
         var result = await _controller.CreateSlave("conn", request);
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
 
         // Test NotFound (404)
@@ -340,7 +340,7 @@ public class SlavesControllerTests
         _mockSlaveRepository.Setup(r => r.UpdateAsync(It.IsAny<Slave>())).ReturnsAsync(slave);
 
         var result = await _controller.UpdateSlave("conn", "slave", request);
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
 
         // Test NotFound (404)

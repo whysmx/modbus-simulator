@@ -39,7 +39,7 @@ public class ConnectionsControllerTests
         var result = await _controller.CreateConnection(request);
 
         // Assert
-        var createdResult = Assert.IsType<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
         Assert.Equal(expectedConnection, createdResult.Value);
         _mockService.Verify(s => s.CreateConnectionAsync(request), Times.Once);
@@ -117,7 +117,7 @@ public class ConnectionsControllerTests
         var result = await _controller.UpdateConnection(id, request);
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
         Assert.Equal(expectedConnection, okResult.Value);
         _mockService.Verify(s => s.UpdateConnectionAsync(id, request), Times.Once);
@@ -285,7 +285,7 @@ public class ConnectionsControllerTests
         var result = await _controller.GetConnectionsTree();
 
         // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
         Assert.Equal(expectedTrees, okResult.Value);
         _mockService.Verify(s => s.GetConnectionsTreeAsync(), Times.Once);

@@ -11,6 +11,7 @@ public class TcpServerTests : IDisposable
     private readonly Mock<IProtocolHandler> _mockProtocolHandler;
     private readonly TcpServer _tcpServer;
     private readonly CancellationTokenSource _testCancellationSource;
+    private static readonly Random Random = new Random();
 
     public TcpServerTests()
     {
@@ -25,6 +26,8 @@ public class TcpServerTests : IDisposable
         _testCancellationSource.Cancel();
         _testCancellationSource.Dispose();
     }
+
+    private static int GetRandomPort() => 10000 + Random.Next(50000);
 
     [Fact]
     public async Task Constructor_InitializesWithProtocolHandler()
@@ -41,10 +44,12 @@ public class TcpServerTests : IDisposable
     public async Task StartAsync_WithValidPorts_CreatesListeners()
     {
         // Arrange
+        var port1 = GetRandomPort();
+        var port2 = GetRandomPort();
         var portToConnectionId = new Dictionary<int, string>
         {
-            [502] = "conn-1",
-            [503] = "conn-2"
+            [port1] = "conn-1",
+            [port2] = "conn-2"
         };
 
         // Mock the protocol handler to return a simple response
@@ -65,15 +70,16 @@ public class TcpServerTests : IDisposable
     public async Task StopAsync_WithValidPort_RemovesListener()
     {
         // Arrange
+        var port = GetRandomPort();
         var portToConnectionId = new Dictionary<int, string>
         {
-            [502] = "conn-1"
+            [port] = "conn-1"
         };
 
         await _tcpServer.StartAsync(portToConnectionId);
 
         // Act
-        await _tcpServer.StopAsync(502);
+        await _tcpServer.StopAsync(port);
 
         // Assert - 验证端口已被移除
         // 由于TcpServer的内部状态是私有的，我们通过行为来验证
@@ -83,10 +89,12 @@ public class TcpServerTests : IDisposable
     public async Task StopAllAsync_StopsAllListeners()
     {
         // Arrange
+        var port1 = GetRandomPort();
+        var port2 = GetRandomPort();
         var portToConnectionId = new Dictionary<int, string>
         {
-            [502] = "conn-1",
-            [503] = "conn-2"
+            [port1] = "conn-1",
+            [port2] = "conn-2"
         };
 
         await _tcpServer.StartAsync(portToConnectionId);
@@ -111,9 +119,10 @@ public class TcpServerTests : IDisposable
     public async Task ProtocolHandler_ProcessRequestAsync_IsCalled()
     {
         // Arrange
+        var port = GetRandomPort();
         var portToConnectionId = new Dictionary<int, string>
         {
-            [502] = "conn-1"
+            [port] = "conn-1"
         };
 
         var testRequest = new byte[] { 0x01, 0x02, 0x03 };
