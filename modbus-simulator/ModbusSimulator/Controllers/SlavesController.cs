@@ -18,6 +18,11 @@ public class SlavesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Slave>> CreateSlave(string connectionId, [FromBody] CreateSlaveRequest request)
     {
+        if (request == null)
+        {
+            return BadRequest(new { error = "请求不能为空" });
+        }
+        
         try
         {
             var slave = new Slave 
@@ -42,6 +47,11 @@ public class SlavesController : ControllerBase
     [HttpPut("{slaveId}")]
     public async Task<ActionResult<Slave>> UpdateSlave(string connectionId, string slaveId, [FromBody] UpdateSlaveRequest request)
     {
+        if (request == null)
+        {
+            return BadRequest(new { error = "请求不能为空" });
+        }
+        
         try
         {
             var slave = new Slave 

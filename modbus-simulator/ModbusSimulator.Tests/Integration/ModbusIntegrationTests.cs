@@ -312,7 +312,7 @@ public class ModbusIntegrationTests : IDisposable
                 new CreateRegisterRequest
                 {
                     Startaddr = 40001 + (i * 10),  // 使用不同的间隔避免冲突
-                    Hexdata = $"AB{i:X2}D"
+                    Hexdata = $"AB{i:X2}CD"  // 确保是偶数长度
                 });
             registerTasks.Add(task);
         }
