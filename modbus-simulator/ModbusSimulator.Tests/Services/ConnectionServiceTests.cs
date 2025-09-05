@@ -65,7 +65,7 @@ public class ConnectionServiceTests
         // Assert
         Assert.Equal(expectedConnection, result);
         _mockRepository.Verify(r => r.CreateAsync(It.Is<Connection>(c =>
-            c.Name == "Test Connection" && c.Id != string.Empty)), Times.Once);
+            c.Name == "Test Connection" && c.Port == 0)), Times.Once);
     }
 
     [Fact]
@@ -298,6 +298,18 @@ public class ConnectionServiceTests
             () => _service.DeleteConnectionAsync(""));
         Assert.Contains("连接ID不能为空", exception.Message);
         Assert.Equal("id", exception.ParamName);
+    }
+
+    [Fact]
+    public async Task DeleteConnectionAsync_NonExistentId_ShouldPropagateRepositoryException()
+    {
+        // Arrange
+        _mockRepository.Setup(r => r.DeleteAsync("missing"))
+            .ThrowsAsync(new KeyNotFoundException("资源不存在"));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => _service.DeleteConnectionAsync("missing"));
     }
 
     #endregion

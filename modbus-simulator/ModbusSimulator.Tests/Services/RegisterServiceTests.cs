@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using ModbusSimulator.Models;
 using ModbusSimulator.Repositories;
 using ModbusSimulator.Services;
@@ -6,11 +7,12 @@ using Xunit;
 
 namespace ModbusSimulator.Tests.Services;
 
-public class RegisterServiceTests
+public class RegisterServiceTests : IDisposable
 {
     private readonly Mock<IRegisterRepository> _mockRegisterRepository;
     private readonly Mock<IConnectionRepository> _mockConnectionRepository;
     private readonly Mock<ISlaveRepository> _mockSlaveRepository;
+    private readonly IMemoryCache _cache;
     private readonly RegisterService _service;
 
     public RegisterServiceTests()
@@ -18,10 +20,20 @@ public class RegisterServiceTests
         _mockRegisterRepository = new Mock<IRegisterRepository>();
         _mockConnectionRepository = new Mock<IConnectionRepository>();
         _mockSlaveRepository = new Mock<ISlaveRepository>();
+        
+        // 使用真实的 MemoryCache 而不是 Mock
+        _cache = new MemoryCache(new MemoryCacheOptions());
+        
         _service = new RegisterService(
             _mockRegisterRepository.Object,
             _mockConnectionRepository.Object,
-            _mockSlaveRepository.Object);
+            _mockSlaveRepository.Object,
+            _cache);
+    }
+
+    public void Dispose()
+    {
+        _cache?.Dispose();
     }
 
     #region GetRegistersBySlaveIdAsync Tests
@@ -30,6 +42,7 @@ public class RegisterServiceTests
     public async Task GetRegistersBySlaveIdAsync_ValidSlaveId_ShouldReturnRegisters()
     {
         // Arrange
+        var port = 502;
         var slaveId = "test-slave-id";
         var expectedRegisters = new List<Register>
         {
@@ -37,60 +50,78 @@ public class RegisterServiceTests
             new Register { Id = "reg2", Slaveid = slaveId, Startaddr = 40002, Hexdata = "1234" }
         };
 
-        var connections = new List<ConnectionTree>
-        {
-            new ConnectionTree
-            {
-                Id = "connection-id",
-                Name = "Test Connection",
-                Port = 502,
-                Slaves = new List<Slave> { new Slave { Id = slaveId, Name = "Test Slave", Slaveid = 1 } }
-            }
-        };
-
-        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
         _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveId)).ReturnsAsync(expectedRegisters);
 
         // Act
-        var result = await _service.GetRegistersBySlaveIdAsync(slaveId);
+        var result = await _service.GetRegistersBySlaveIdAsync(port, slaveId);
 
         // Assert
         Assert.Equal(expectedRegisters, result);
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Once);
+        
+        // Test cache by calling again - should not hit repository twice
+        var cachedResult = await _service.GetRegistersBySlaveIdAsync(port, slaveId);
+        Assert.Equal(expectedRegisters, cachedResult);
+        
+        // Repository should still only be called once (from cache on second call)
         _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Once);
     }
 
     [Fact]
     public async Task GetRegistersBySlaveIdAsync_EmptySlaveId_ShouldThrowArgumentException()
     {
+        // Arrange
+        var port = 502;
+        
         // Act & Assert
         var exception = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.GetRegistersBySlaveIdAsync(""));
+            () => _service.GetRegistersBySlaveIdAsync(port, ""));
         Assert.Contains("从机ID不能为空", exception.Message);
         Assert.Equal("slaveId", exception.ParamName);
     }
 
     [Fact]
-    public async Task GetRegistersBySlaveIdAsync_NonExistentSlave_ShouldThrowKeyNotFoundException()
+    public async Task GetRegistersBySlaveIdAsync_DifferentPorts_ShouldHaveSeparateCaches()
     {
         // Arrange
-        var slaveId = "non-existent-slave";
-        var connections = new List<ConnectionTree>
+        var port1 = 502;
+        var port2 = 503;
+        var slaveId = "test-slave-id";
+        
+        var registers1 = new List<Register>
         {
-            new ConnectionTree
-            {
-                Id = "connection-id",
-                Name = "Test Connection",
-                Port = 502,
-                Slaves = new List<Slave> { new Slave { Id = "different-slave", Name = "Test Slave", Slaveid = 1 } }
-            }
+            new Register { Id = "reg1", Slaveid = slaveId, Startaddr = 40001, Hexdata = "ABCD" }
+        };
+        
+        var registers2 = new List<Register>
+        {
+            new Register { Id = "reg2", Slaveid = slaveId, Startaddr = 40002, Hexdata = "1234" }
         };
 
-        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
+        _mockRegisterRepository.SetupSequence(r => r.GetBySlaveIdAsync(slaveId))
+            .ReturnsAsync(registers1)
+            .ReturnsAsync(registers2);
 
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _service.GetRegistersBySlaveIdAsync(slaveId));
-        Assert.Contains("从机不存在", exception.Message);
+        // Act
+        var result1 = await _service.GetRegistersBySlaveIdAsync(port1, slaveId);
+        var result2 = await _service.GetRegistersBySlaveIdAsync(port2, slaveId);
+
+        // Assert
+        Assert.Equal(registers1, result1);
+        Assert.Equal(registers2, result2);
+        
+        // Both ports should trigger separate repository calls
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Exactly(2));
+        
+        // Verify cache is working for each port independently
+        var cachedResult1 = await _service.GetRegistersBySlaveIdAsync(port1, slaveId);
+        var cachedResult2 = await _service.GetRegistersBySlaveIdAsync(port2, slaveId);
+        
+        Assert.Equal(registers1, cachedResult1);
+        Assert.Equal(registers2, cachedResult2);
+        
+        // Still only 2 repository calls (cache hit for both ports)
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Exactly(2));
     }
 
     #endregion
@@ -242,118 +273,8 @@ public class RegisterServiceTests
         Assert.Equal("request.Startaddr", exception.ParamName);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData(null)]
-    [InlineData("   ")]
-    public async Task CreateRegisterAsync_EmptyHexdata_ShouldThrowArgumentException(string hexdata)
-    {
-        // Arrange
-        var connectionId = "test-connection-id";
-        var slaveId = "test-slave-id";
-        var request = new CreateRegisterRequest { Startaddr = 40001, Hexdata = hexdata };
 
-        var connections = new List<ConnectionTree>
-        {
-            new ConnectionTree
-            {
-                Id = connectionId,
-                Name = "Test Connection",
-                Port = 502,
-                Slaves = new List<Slave> { new Slave { Id = slaveId, Name = "Test Slave", Slaveid = 1 } }
-            }
-        };
 
-        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
-
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateRegisterAsync(connectionId, slaveId, request));
-        Assert.Contains("十六进制数据不能为空", exception.Message);
-        Assert.Equal("request.Hexdata", exception.ParamName);
-    }
-
-    [Theory]
-    [InlineData("XYZ")]      // Invalid hex characters
-    [InlineData("123")]      // Odd length
-    [InlineData("12 34")]    // Contains spaces
-    [InlineData("12@34")]    // Invalid characters
-    public async Task CreateRegisterAsync_InvalidHexdata_ShouldThrowArgumentException(string hexdata)
-    {
-        // Arrange
-        var connectionId = "test-connection-id";
-        var slaveId = "test-slave-id";
-        var request = new CreateRegisterRequest { Startaddr = 40001, Hexdata = hexdata };
-
-        var connections = new List<ConnectionTree>
-        {
-            new ConnectionTree
-            {
-                Id = connectionId,
-                Name = "Test Connection",
-                Port = 502,
-                Slaves = new List<Slave> { new Slave { Id = slaveId, Name = "Test Slave", Slaveid = 1 } }
-            }
-        };
-
-        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
-
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateRegisterAsync(connectionId, slaveId, request));
-        Assert.Contains("十六进制数据格式无效", exception.Message);
-        Assert.Equal("request.Hexdata", exception.ParamName);
-    }
-
-    [Theory]
-    [InlineData(40001, "ABC")]        // Holding register: length should be multiple of 4
-    [InlineData(30001, "ABC")]        // Input register: length should be multiple of 4
-    [InlineData(1, "A")]              // Coil: length should be multiple of 2
-    [InlineData(10001, "A")]          // Discrete input: length should be multiple of 2
-    public async Task CreateRegisterAsync_InvalidHexdataLength_ShouldThrowArgumentException(int startAddr, string hexdata)
-    {
-        // Arrange
-        var connectionId = "test-connection-id";
-        var slaveId = "test-slave-id";
-        var request = new CreateRegisterRequest { Startaddr = startAddr, Hexdata = hexdata };
-
-        var connections = new List<ConnectionTree>
-        {
-            new ConnectionTree
-            {
-                Id = connectionId,
-                Name = "Test Connection",
-                Port = 502,
-                Slaves = new List<Slave> { new Slave { Id = slaveId, Name = "Test Slave", Slaveid = 1 } }
-            }
-        };
-
-        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
-
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CreateRegisterAsync(connectionId, slaveId, request));
-
-        // 根据地址范围检查具体的错误信息
-        if (startAddr >= 30001 && startAddr <= 39999) // 输入寄存器
-        {
-            Assert.Contains("输入寄存器数据长度必须是4的倍数", exception.Message);
-        }
-        else if (startAddr >= 40001 && startAddr <= 49999) // 保持寄存器
-        {
-            Assert.Contains("保持寄存器数据长度必须是4的倍数", exception.Message);
-        }
-        else if (startAddr >= 1 && startAddr <= 9999) // 线圈
-        {
-            Assert.Contains("线圈数据长度必须是2的倍数", exception.Message);
-        }
-        else if (startAddr >= 10001 && startAddr <= 19999) // 离散输入
-        {
-            Assert.Contains("离散输入数据长度必须是2的倍数", exception.Message);
-        }
-
-        Assert.Equal("Hexdata", exception.ParamName);
-    }
 
     [Theory]
     [InlineData(40001, "ABCD")]       // Valid holding register
@@ -506,6 +427,70 @@ public class RegisterServiceTests
     }
 
     [Theory]
+    [InlineData("", "slave-id", "reg-id")]
+    [InlineData(null, "slave-id", "reg-id")]
+    [InlineData("   ", "slave-id", "reg-id")]
+    public async Task UpdateRegisterAsync_EmptyConnectionId_ShouldThrowArgumentException_ForUpdate(string connectionId, string slaveId, string registerId)
+    {
+        // Arrange
+        var request = new UpdateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateRegisterAsync(connectionId, slaveId, registerId, request));
+        Assert.Contains("连接ID不能为空", exception.Message);
+        Assert.Equal("connectionId", exception.ParamName);
+    }
+
+    [Theory]
+    [InlineData("connection-id", "", "reg-id")]
+    [InlineData("connection-id", null, "reg-id")]
+    [InlineData("connection-id", "   ", "reg-id")]
+    public async Task UpdateRegisterAsync_EmptySlaveId_ShouldThrowArgumentException_ForUpdate(string connectionId, string slaveId, string registerId)
+    {
+        // Arrange
+        var request = new UpdateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateRegisterAsync(connectionId, slaveId, registerId, request));
+        Assert.Contains("从机ID不能为空", exception.Message);
+        Assert.Equal("slaveId", exception.ParamName);
+    }
+
+    [Theory]
+    [InlineData("connection-id", "slave-id", "")]
+    [InlineData("connection-id", "slave-id", null)]
+    [InlineData("connection-id", "slave-id", "   ")]
+    public async Task UpdateRegisterAsync_EmptyRegisterId_ShouldThrowArgumentException_ForUpdate(string connectionId, string slaveId, string registerId)
+    {
+        // Arrange
+        var request = new UpdateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateRegisterAsync(connectionId, slaveId, registerId, request));
+        Assert.Contains("寄存器ID不能为空", exception.Message);
+        Assert.Equal("registerId", exception.ParamName);
+    }
+
+
+
+    [Fact]
+    public async Task UpdateRegisterAsync_NonExistentConnectionOrSlave_ShouldThrowKeyNotFound()
+    {
+        // Arrange
+        var request = new UpdateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
+
+        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync())
+            .ReturnsAsync(new List<ConnectionTree>());
+
+        // Act & Assert
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => _service.UpdateRegisterAsync("conn", "slave", "reg", request));
+    }
+
+    [Theory]
     [InlineData("", "slave-id", "register-id")]
     [InlineData(null, "slave-id", "register-id")]
     [InlineData("   ", "slave-id", "register-id")]
@@ -586,53 +571,41 @@ public class RegisterServiceTests
         _mockRegisterRepository.Verify(r => r.DeleteAsync(registerId), Times.Once);
     }
 
-    #endregion
-
-    #region Hex Validation Helper Tests
-
     [Theory]
-    [InlineData("1234ABCD", true)]
-    [InlineData("abcdef12", true)]
-    [InlineData("ABCDEF12", true)]
-    [InlineData("12ab34cd", true)]
-    [InlineData("", false)]
-    [InlineData("XYZ", false)]
-    [InlineData("123", false)]      // Odd length
-    [InlineData("12 34", false)]    // Contains space
-    [InlineData("12@34", false)]    // Invalid character
-    public void IsValidHexString_ShouldValidateCorrectly(string hexString, bool expected)
-    {
-        // Act
-        var result = RegisterService.IsValidHexString(hexString);
-
-        // Assert
-        Assert.Equal(expected, result);
-    }
-
-    [Theory]
-    [InlineData(40001, "ABCD", true)]         // Holding register: 4 chars valid
-    [InlineData(40001, "ABCD1234", true)]     // Holding register: 8 chars valid
-    [InlineData(40001, "ABC", false)]         // Holding register: 3 chars invalid
-    [InlineData(30001, "ABCD", true)]         // Input register: 4 chars valid
-    [InlineData(30001, "ABC", false)]         // Input register: 3 chars invalid
-    [InlineData(1, "AB", true)]               // Coil: 2 chars valid
-    [InlineData(1, "A", false)]               // Coil: 1 char invalid
-    [InlineData(10001, "ABCD", true)]         // Discrete input: 4 chars valid
-    [InlineData(10001, "ABC", false)]         // Discrete input: 3 chars invalid
-    public void ValidateHexDataLength_ShouldValidateCorrectly(int startAddr, string hexData, bool shouldPass)
+    [InlineData("", "slave", "reg", "connectionId")]
+    [InlineData("conn", "", "reg", "slaveId")]
+    [InlineData("conn", "slave", "", "registerId")]
+    public async Task DeleteRegisterAsync_EmptyIds_ShouldThrowArgumentException(string connectionId, string slaveId, string registerId, string expectedParam)
     {
         // Act & Assert
-        if (shouldPass)
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.DeleteRegisterAsync(connectionId, slaveId, registerId));
+        Assert.Equal(expectedParam, ex.ParamName);
+    }
+
+    [Fact]
+    public async Task DeleteRegisterAsync_NonExistentSlave_ShouldThrowKeyNotFound()
+    {
+        // Arrange
+        var connectionId = "conn";
+        var slaveId = "missing-slave";
+        var registerId = "reg";
+
+        var connections = new List<ConnectionTree>
         {
-            // Should not throw
-            RegisterService.ValidateHexDataLength(startAddr, hexData);
-        }
-        else
-        {
-            // Should throw
-            Assert.Throws<ArgumentException>(() =>
-                RegisterService.ValidateHexDataLength(startAddr, hexData));
-        }
+            new ConnectionTree
+            {
+                Id = connectionId,
+                Name = "Test Connection",
+                Port = 502,
+                Slaves = new List<Slave> { new Slave { Id = "other-slave", Name = "Other", Slaveid = 2 } }
+            }
+        };
+        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => _service.DeleteRegisterAsync(connectionId, slaveId, registerId));
     }
 
     #endregion

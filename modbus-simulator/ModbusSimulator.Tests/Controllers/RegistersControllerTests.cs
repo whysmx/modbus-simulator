@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ModbusSimulator.Controllers;
 using ModbusSimulator.Models;
-using ModbusSimulator.Repositories;
+using ModbusSimulator.Services;
 using Moq;
 using Xunit;
 
@@ -9,13 +9,15 @@ namespace ModbusSimulator.Tests.Controllers;
 
 public class RegistersControllerTests
 {
-    private readonly Mock<IRegisterRepository> _mockRegisterRepository;
+    private readonly Mock<IRegisterService> _mockRegisterService;
+    private readonly Mock<IConnectionService> _mockConnectionService;
     private readonly RegistersController _controller;
 
     public RegistersControllerTests()
     {
-        _mockRegisterRepository = new Mock<IRegisterRepository>();
-        _controller = new RegistersController(_mockRegisterRepository.Object);
+        _mockRegisterService = new Mock<IRegisterService>();
+        _mockConnectionService = new Mock<IConnectionService>();
+        _controller = new RegistersController(_mockRegisterService.Object, _mockConnectionService.Object);
     }
 
     #region GetRegisters Tests
@@ -26,13 +28,16 @@ public class RegistersControllerTests
         // Arrange
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
+        var testPort = 502;
         var expectedRegisters = new List<Register>
         {
             new Register { Id = "reg1", Slaveid = slaveId, Startaddr = 40001, Hexdata = "ABCD" },
             new Register { Id = "reg2", Slaveid = slaveId, Startaddr = 40002, Hexdata = "1234" }
         };
 
-        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveId)).ReturnsAsync(expectedRegisters);
+        var mockConnection = new Connection { Id = connectionId, Port = testPort };
+        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId)).ReturnsAsync(expectedRegisters);
 
         // Act
         var result = await _controller.GetRegisters(connectionId, slaveId);
@@ -42,7 +47,8 @@ public class RegistersControllerTests
         Assert.Equal(200, okResult.StatusCode);
         var returnedRegisters = okResult.Value as IEnumerable<Register>;
         Assert.Equal(expectedRegisters, returnedRegisters);
-        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Once);
+        _mockConnectionService.Verify(c => c.GetConnectionByIdAsync(connectionId), Times.Once);
+        _mockRegisterService.Verify(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId), Times.Once);
     }
 
     [Fact]
@@ -51,8 +57,11 @@ public class RegistersControllerTests
         // Arrange
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
+        var testPort = 502;
 
-        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveId))
+        var mockConnection = new Connection { Id = connectionId, Port = testPort };
+        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId))
             .ThrowsAsync(new KeyNotFoundException("Slave not found"));
 
         // Act
@@ -72,9 +81,12 @@ public class RegistersControllerTests
         // Arrange
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
+        var testPort = 502;
         var emptyRegisters = new List<Register>();
 
-        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveId)).ReturnsAsync(emptyRegisters);
+        var mockConnection = new Connection { Id = connectionId, Port = testPort };
+        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId)).ReturnsAsync(emptyRegisters);
 
         // Act
         var result = await _controller.GetRegisters(connectionId, slaveId);
@@ -83,7 +95,7 @@ public class RegistersControllerTests
         var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
         var returnedRegisters = okResult.Value as IEnumerable<Register>;
-        Assert.Empty(returnedRegisters);
+        Assert.Empty(returnedRegisters!);
     }
 
     #endregion
@@ -105,18 +117,18 @@ public class RegistersControllerTests
             Hexdata = "ABCD"
         };
 
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>())).ReturnsAsync(expectedRegister);
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>())).ReturnsAsync(expectedRegister);
 
         // Act
         var result = await _controller.CreateRegister(connectionId, slaveId, request);
 
         // Assert
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedAtActionResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
         Assert.Equal(expectedRegister, createdResult.Value);
 
-        _mockRegisterRepository.Verify(r => r.CreateAsync(It.Is<Register>(reg =>
-            reg.Slaveid == slaveId && reg.Startaddr == 40001 && reg.Hexdata == "ABCD")), Times.Once);
+        _mockRegisterService.Verify(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.Is<CreateRegisterRequest>(req =>
+            req.Startaddr == 40001 && req.Hexdata == "ABCD")), Times.Once);
     }
 
     [Fact]
@@ -127,7 +139,7 @@ public class RegistersControllerTests
         var slaveId = "test-slave-id";
         var request = new CreateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
 
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>()))
             .ThrowsAsync(new KeyNotFoundException("Slave not found"));
 
         // Act
@@ -149,7 +161,7 @@ public class RegistersControllerTests
         var slaveId = "test-slave-id";
         var request = new CreateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
 
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>()))
             .ThrowsAsync(new InvalidOperationException("Duplicate register"));
 
         // Act
@@ -183,7 +195,7 @@ public class RegistersControllerTests
             Hexdata = "1234"
         };
 
-        _mockRegisterRepository.Setup(r => r.UpdateAsync(It.IsAny<Register>())).ReturnsAsync(expectedRegister);
+        _mockRegisterService.Setup(r => r.UpdateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateRegisterRequest>())).ReturnsAsync(expectedRegister);
 
         // Act
         var result = await _controller.UpdateRegister(connectionId, slaveId, registerId, request);
@@ -193,8 +205,8 @@ public class RegistersControllerTests
         Assert.Equal(200, okResult.StatusCode);
         Assert.Equal(expectedRegister, okResult.Value);
 
-        _mockRegisterRepository.Verify(r => r.UpdateAsync(It.Is<Register>(reg =>
-            reg.Id == registerId && reg.Slaveid == slaveId && reg.Startaddr == 40002 && reg.Hexdata == "1234")), Times.Once);
+        _mockRegisterService.Verify(r => r.UpdateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.Is<UpdateRegisterRequest>(req =>
+            req.Startaddr == 40002 && req.Hexdata == "1234")), Times.Once);
     }
 
     [Fact]
@@ -206,7 +218,7 @@ public class RegistersControllerTests
         var registerId = "test-register-id";
         var request = new UpdateRegisterRequest { Startaddr = 40002, Hexdata = "1234" };
 
-        _mockRegisterRepository.Setup(r => r.UpdateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.UpdateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateRegisterRequest>()))
             .ThrowsAsync(new KeyNotFoundException("Register not found"));
 
         // Act
@@ -229,7 +241,7 @@ public class RegistersControllerTests
         var registerId = "test-register-id";
         var request = new UpdateRegisterRequest { Startaddr = 40002, Hexdata = "1234" };
 
-        _mockRegisterRepository.Setup(r => r.UpdateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.UpdateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateRegisterRequest>()))
             .ThrowsAsync(new InvalidOperationException("Duplicate register"));
 
         // Act
@@ -255,14 +267,14 @@ public class RegistersControllerTests
         var slaveId = "test-slave-id";
         var registerId = "test-register-id";
 
-        _mockRegisterRepository.Setup(r => r.DeleteAsync(registerId)).ReturnsAsync(true);
+        // DeleteRegisterAsync returns Task, no setup needed
 
         // Act
         var result = await _controller.DeleteRegister(connectionId, slaveId, registerId);
 
         // Assert
         Assert.IsType<NoContentResult>(result);
-        _mockRegisterRepository.Verify(r => r.DeleteAsync(registerId), Times.Once);
+        _mockRegisterService.Verify(r => r.DeleteRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), registerId), Times.Once);
     }
 
     [Fact]
@@ -273,7 +285,7 @@ public class RegistersControllerTests
         var slaveId = "test-slave-id";
         var registerId = "test-register-id";
 
-        _mockRegisterRepository.Setup(r => r.DeleteAsync(registerId))
+        _mockRegisterService.Setup(r => r.DeleteRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ThrowsAsync(new KeyNotFoundException("Register not found"));
 
         // Act
@@ -298,15 +310,15 @@ public class RegistersControllerTests
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
 
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>()))
             .ReturnsAsync(new Register { Id = "test-id", Slaveid = slaveId, Startaddr = 0, Hexdata = null });
 
         // Act
         var result = await _controller.CreateRegister(connectionId, slaveId, null);
 
         // Assert
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
-        Assert.Equal(201, createdResult.StatusCode);
+        var badRequestResult = Assert.IsAssignableFrom<BadRequestObjectResult>(result.Result);
+        Assert.Equal(400, badRequestResult.StatusCode);
     }
 
     [Fact]
@@ -317,15 +329,15 @@ public class RegistersControllerTests
         var slaveId = "test-slave-id";
         var registerId = "test-register-id";
 
-        _mockRegisterRepository.Setup(r => r.UpdateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.UpdateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateRegisterRequest>()))
             .ReturnsAsync(new Register { Id = registerId, Slaveid = slaveId, Startaddr = 0, Hexdata = null });
 
         // Act
         var result = await _controller.UpdateRegister(connectionId, slaveId, registerId, null);
 
         // Assert
-        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
-        Assert.Equal(200, okResult.StatusCode);
+        var badRequestResult = Assert.IsAssignableFrom<BadRequestObjectResult>(result.Result);
+        Assert.Equal(400, badRequestResult.StatusCode);
     }
 
     #endregion
@@ -342,20 +354,20 @@ public class RegistersControllerTests
         var request = new CreateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
         var expectedRegister = new Register
         {
-            Id = "generated-id",
+            Id = registerId, // Use the registerId parameter from test data
             Slaveid = slaveId,
             Startaddr = 40001,
             Hexdata = "ABCD"
         };
 
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.Is<Register>(r => r.Slaveid == slaveId)))
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>()))
             .ReturnsAsync(expectedRegister);
 
         // Act
         var result = await _controller.CreateRegister(connectionId, slaveId, request);
 
         // Assert
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedAtActionResult>(result.Result);
         var returnedRegister = createdResult.Value as Register;
         Assert.Equal(slaveId, returnedRegister.Slaveid);
     }
@@ -368,18 +380,23 @@ public class RegistersControllerTests
     public async Task GetRegisters_ShouldReturnCorrectHttpStatusCodes()
     {
         // Test OK (200)
+        var testPort = 502;
+        var mockConnection = new Connection { Id = "conn", Port = testPort };
         var registers = new List<Register> { new Register { Id = "id", Slaveid = "slave", Startaddr = 40001, Hexdata = "ABCD" } };
-        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync("slave")).ReturnsAsync(registers);
+        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync("conn")).ReturnsAsync(mockConnection);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, "slave")).ReturnsAsync(registers);
 
         var result = await _controller.GetRegisters("conn", "slave");
         var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
 
         // Test NotFound (404)
-        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync("slave"))
+        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync("conn")).ReturnsAsync(mockConnection);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, "slave"))
             .ThrowsAsync(new KeyNotFoundException("Not found"));
         var notFoundResult = await _controller.GetRegisters("conn", "slave");
-        Assert.Equal(404, ((NotFoundObjectResult)notFoundResult.Result).StatusCode);
+        var notFoundObjectResult = Assert.IsType<NotFoundObjectResult>(notFoundResult.Result);
+        Assert.Equal(404, notFoundObjectResult.StatusCode);
     }
 
     [Fact]
@@ -388,23 +405,25 @@ public class RegistersControllerTests
         // Test Created (201)
         var request = new CreateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
         var register = new Register { Id = "id", Slaveid = "slave", Startaddr = 40001, Hexdata = "ABCD" };
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>())).ReturnsAsync(register);
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>())).ReturnsAsync(register);
 
         var result = await _controller.CreateRegister("conn", "slave", request);
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedAtActionResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
 
         // Test NotFound (404)
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>()))
             .ThrowsAsync(new KeyNotFoundException("Not found"));
         var notFoundResult = await _controller.CreateRegister("conn", "slave", request);
-        Assert.Equal(404, ((NotFoundObjectResult)notFoundResult.Result).StatusCode);
+        var notFoundObjectResult = Assert.IsType<NotFoundObjectResult>(notFoundResult.Result);
+        Assert.Equal(404, notFoundObjectResult.StatusCode);
 
         // Test BadRequest (400)
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>()))
             .ThrowsAsync(new InvalidOperationException("Bad request"));
         var badRequestResult = await _controller.CreateRegister("conn", "slave", request);
-        Assert.Equal(400, ((BadRequestObjectResult)badRequestResult.Result).StatusCode);
+        var badRequestObjectResult = Assert.IsType<BadRequestObjectResult>(badRequestResult.Result);
+        Assert.Equal(400, badRequestObjectResult.StatusCode);
     }
 
     [Fact]
@@ -413,29 +432,30 @@ public class RegistersControllerTests
         // Test OK (200)
         var request = new UpdateRegisterRequest { Startaddr = 40002, Hexdata = "1234" };
         var register = new Register { Id = "id", Slaveid = "slave", Startaddr = 40002, Hexdata = "1234" };
-        _mockRegisterRepository.Setup(r => r.UpdateAsync(It.IsAny<Register>())).ReturnsAsync(register);
+        _mockRegisterService.Setup(r => r.UpdateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateRegisterRequest>())).ReturnsAsync(register);
 
         var result = await _controller.UpdateRegister("conn", "slave", "reg", request);
         var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
 
         // Test NotFound (404)
-        _mockRegisterRepository.Setup(r => r.UpdateAsync(It.IsAny<Register>()))
+        _mockRegisterService.Setup(r => r.UpdateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateRegisterRequest>()))
             .ThrowsAsync(new KeyNotFoundException("Not found"));
         var notFoundResult = await _controller.UpdateRegister("conn", "slave", "reg", request);
-        Assert.Equal(404, ((NotFoundObjectResult)notFoundResult.Result).StatusCode);
+        var notFoundObjectResult = Assert.IsType<NotFoundObjectResult>(notFoundResult.Result);
+        Assert.Equal(404, notFoundObjectResult.StatusCode);
     }
 
     [Fact]
     public async Task DeleteRegister_ShouldReturnCorrectHttpStatusCodes()
     {
         // Test NoContent (204)
-        _mockRegisterRepository.Setup(r => r.DeleteAsync("reg")).ReturnsAsync(true);
+        // DeleteRegisterAsync returns Task, no setup needed
         var result = await _controller.DeleteRegister("conn", "slave", "reg");
         Assert.IsType<NoContentResult>(result);
 
         // Test NotFound (404)
-        _mockRegisterRepository.Setup(r => r.DeleteAsync("reg"))
+        _mockRegisterService.Setup(r => r.DeleteRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ThrowsAsync(new KeyNotFoundException("Not found"));
         var notFoundResult = await _controller.DeleteRegister("conn", "slave", "reg");
         Assert.Equal(404, ((NotFoundObjectResult)notFoundResult).StatusCode);
@@ -464,13 +484,13 @@ public class RegistersControllerTests
             Hexdata = hexdata
         };
 
-        _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>())).ReturnsAsync(expectedRegister);
+        _mockRegisterService.Setup(r => r.CreateRegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CreateRegisterRequest>())).ReturnsAsync(expectedRegister);
 
         // Act
         var result = await _controller.CreateRegister(connectionId, slaveId, request);
 
         // Assert
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedAtActionResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
     }
 

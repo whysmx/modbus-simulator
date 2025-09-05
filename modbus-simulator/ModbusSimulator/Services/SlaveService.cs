@@ -92,6 +92,13 @@ public class SlaveService : ISlaveService
             throw new KeyNotFoundException("连接不存在");
         }
 
+        // 验证从机是否存在
+        var existingSlave = connection.Slaves.FirstOrDefault(s => s.Id == slaveId);
+        if (existingSlave == null)
+        {
+            throw new KeyNotFoundException("从机不存在");
+        }
+
         // 业务验证
         if (string.IsNullOrWhiteSpace(request.Name))
         {
@@ -153,6 +160,13 @@ public class SlaveService : ISlaveService
         if (connection == null)
         {
             throw new KeyNotFoundException("连接不存在");
+        }
+
+        // 验证从机是否存在
+        var existingSlave = connection.Slaves.FirstOrDefault(s => s.Id == slaveId);
+        if (existingSlave == null)
+        {
+            throw new KeyNotFoundException("从机不存在");
         }
 
         await _slaveRepository.DeleteAsync(slaveId);

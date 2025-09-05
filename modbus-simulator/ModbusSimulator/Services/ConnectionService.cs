@@ -17,6 +17,30 @@ public class ConnectionService : IConnectionService
         return await _connectionRepository.GetConnectionsTreeAsync();
     }
 
+    public async Task<Connection> GetConnectionByIdAsync(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("连接ID不能为空", nameof(id));
+        }
+
+        var connections = await _connectionRepository.GetConnectionsTreeAsync();
+        var connection = connections.FirstOrDefault(c => c.Id == id);
+        
+        if (connection == null)
+        {
+            throw new KeyNotFoundException("连接不存在");
+        }
+
+        return new Connection
+        {
+            Id = connection.Id,
+            Name = connection.Name,
+            Port = connection.Port,
+            ProtocolType = connection.ProtocolType
+        };
+    }
+
     public async Task<Connection> CreateConnectionAsync(CreateConnectionRequest request)
     {
         // 业务验证

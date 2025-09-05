@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using ModbusSimulator.Models;
 using ModbusSimulator.Repositories;
 
@@ -8,18 +9,21 @@ public class RegisterService : IRegisterService
     private readonly IRegisterRepository _registerRepository;
     private readonly IConnectionRepository _connectionRepository;
     private readonly ISlaveRepository _slaveRepository;
+    private readonly IMemoryCache _cache;
 
     public RegisterService(
         IRegisterRepository registerRepository,
         IConnectionRepository connectionRepository,
-        ISlaveRepository slaveRepository)
+        ISlaveRepository slaveRepository,
+        IMemoryCache cache)
     {
         _registerRepository = registerRepository;
         _connectionRepository = connectionRepository;
         _slaveRepository = slaveRepository;
+        _cache = cache;
     }
 
-    public async Task<IEnumerable<Register>> GetRegistersBySlaveIdAsync(string slaveId)
+    public async Task<IEnumerable<Register>> GetRegistersBySlaveIdAsync(int port, string slaveId)
     {
         // 验证从机ID
         if (string.IsNullOrWhiteSpace(slaveId))
@@ -27,15 +31,20 @@ public class RegisterService : IRegisterService
             throw new ArgumentException("从机ID不能为空", nameof(slaveId));
         }
 
-        // 验证从机是否存在
-        var connections = await _connectionRepository.GetConnectionsTreeAsync();
-        var slaveExists = connections.Any(c => c.Slaves.Any(s => s.Id == slaveId));
-        if (!slaveExists)
+        // 使用基于端口的缓存
+        string cacheKey = GetPortSlaveRegistersCacheKey(port, slaveId);
+        if (_cache.TryGetValue(cacheKey, out IEnumerable<Register> cachedRegisters))
         {
-            throw new KeyNotFoundException("从机不存在");
+            return cachedRegisters;
         }
 
-        return await _registerRepository.GetBySlaveIdAsync(slaveId);
+        // 从数据库获取数据
+        var registers = await _registerRepository.GetBySlaveIdAsync(slaveId);
+        
+        // 缓存结果，过期时间设为24小时（主要依靠手动清除）
+        _cache.Set(cacheKey, registers, TimeSpan.FromHours(24));
+        
+        return registers;
     }
 
     public async Task<Register> CreateRegisterAsync(string connectionId, string slaveId, CreateRegisterRequest request)
@@ -51,39 +60,36 @@ public class RegisterService : IRegisterService
             throw new ArgumentException("从机ID不能为空", nameof(slaveId));
         }
 
-        // 验证连接和从机是否存在
-        await ValidateConnectionAndSlaveAsync(connectionId, slaveId);
+        // 验证连接和从机是否存在，并获取连接信息
+        var connection = await ValidateConnectionAndSlaveAsync(connectionId, slaveId);
 
-        // 业务验证
+        // 业务验证 - 只保留地址范围校验
         if (request.Startaddr < 0)
         {
             throw new ArgumentException("起始地址不能为负数", "request.Startaddr");
         }
 
-        if (string.IsNullOrWhiteSpace(request.Hexdata))
+        // 验证地址范围
+        if (!IsValidAddressRange(request.Startaddr))
         {
-            throw new ArgumentException("十六进制数据不能为空", "request.Hexdata");
+            throw new ArgumentException("起始地址不在有效范围内（1-9999线圈，10001-19999离散输入，30001-39999输入寄存器，40001-49999保持寄存器）", "request.Startaddr");
         }
-
-        // 验证十六进制格式
-        if (!IsValidHexString(request.Hexdata))
-        {
-            throw new ArgumentException("十六进制数据格式无效，只能包含0-9和A-F字符", "request.Hexdata");
-        }
-
-        // 根据地址范围验证数据长度
-        ValidateHexDataLength(request.Startaddr, request.Hexdata);
 
         var register = new Register
         {
             Slaveid = slaveId,
             Startaddr = request.Startaddr,
-            Hexdata = request.Hexdata.ToUpper()
+            Hexdata = request.Hexdata // 保存原始数据，不做任何处理
         };
 
         try
         {
-            return await _registerRepository.CreateAsync(register);
+            var result = await _registerRepository.CreateAsync(register);
+            
+            // 清除相关缓存，使用端口和从站ID
+            ClearPortSlaveCache(connection.Port, slaveId);
+            
+            return result;
         }
         catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.Message.Contains("UNIQUE constraint failed"))
         {
@@ -109,40 +115,37 @@ public class RegisterService : IRegisterService
             throw new ArgumentException("寄存器ID不能为空", nameof(registerId));
         }
 
-        // 验证连接和从机是否存在
-        await ValidateConnectionAndSlaveAsync(connectionId, slaveId);
+        // 验证连接和从机是否存在，并获取连接信息
+        var connection = await ValidateConnectionAndSlaveAsync(connectionId, slaveId);
 
-        // 业务验证
+        // 业务验证 - 只保留地址范围校验
         if (request.Startaddr < 0)
         {
             throw new ArgumentException("起始地址不能为负数", "request.Startaddr");
         }
 
-        if (string.IsNullOrWhiteSpace(request.Hexdata))
+        // 验证地址范围
+        if (!IsValidAddressRange(request.Startaddr))
         {
-            throw new ArgumentException("十六进制数据不能为空", "request.Hexdata");
+            throw new ArgumentException("起始地址不在有效范围内（1-9999线圈，10001-19999离散输入，30001-39999输入寄存器，40001-49999保持寄存器）", "request.Startaddr");
         }
-
-        // 验证十六进制格式
-        if (!IsValidHexString(request.Hexdata))
-        {
-            throw new ArgumentException("十六进制数据格式无效，只能包含0-9和A-F字符", "request.Hexdata");
-        }
-
-        // 根据地址范围验证数据长度
-        ValidateHexDataLength(request.Startaddr, request.Hexdata);
 
         var register = new Register
         {
             Id = registerId,
             Slaveid = slaveId,
             Startaddr = request.Startaddr,
-            Hexdata = request.Hexdata.ToUpper()
+            Hexdata = request.Hexdata // 保存原始数据，不做任何处理
         };
 
         try
         {
-            return await _registerRepository.UpdateAsync(register);
+            var result = await _registerRepository.UpdateAsync(register);
+            
+            // 清除相关缓存，使用端口和从站ID
+            ClearPortSlaveCache(connection.Port, slaveId);
+            
+            return result;
         }
         catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.Message.Contains("UNIQUE constraint failed"))
         {
@@ -168,13 +171,16 @@ public class RegisterService : IRegisterService
             throw new ArgumentException("寄存器ID不能为空", nameof(registerId));
         }
 
-        // 验证连接和从机是否存在
-        await ValidateConnectionAndSlaveAsync(connectionId, slaveId);
+        // 验证连接和从机是否存在，并获取连接信息
+        var connection = await ValidateConnectionAndSlaveAsync(connectionId, slaveId);
 
         await _registerRepository.DeleteAsync(registerId);
+        
+        // 清除相关缓存，使用端口和从站ID
+        ClearPortSlaveCache(connection.Port, slaveId);
     }
 
-    private async Task ValidateConnectionAndSlaveAsync(string connectionId, string slaveId)
+    private async Task<Connection> ValidateConnectionAndSlaveAsync(string connectionId, string slaveId)
     {
         var connections = await _connectionRepository.GetConnectionsTreeAsync();
         var connection = connections.FirstOrDefault(c => c.Id == connectionId);
@@ -188,76 +194,27 @@ public class RegisterService : IRegisterService
         {
             throw new KeyNotFoundException("从机不存在");
         }
+
+        return connection;
     }
 
-    internal static bool IsValidHexString(string hexString)
+    private static bool IsValidAddressRange(int address)
     {
-        if (string.IsNullOrEmpty(hexString))
-        {
-            return false;
-        }
-        // 十六进制字符串长度必须是偶数
-        if (hexString.Length % 2 != 0)
-        {
-            return false;
-        }
-        return hexString.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'));
+        return (address >= 1 && address <= 9999) ||          // 线圈
+               (address >= 10001 && address <= 19999) ||     // 离散输入
+               (address >= 30001 && address <= 39999) ||     // 输入寄存器
+               (address >= 40001 && address <= 49999);       // 保持寄存器
     }
 
-    internal static void ValidateHexDataLength(int startAddr, string hexData)
+    // 缓存相关方法
+    private string GetPortSlaveRegistersCacheKey(int port, string slaveId)
     {
-        // 空字符串验证
-        if (string.IsNullOrEmpty(hexData))
-        {
-            throw new ArgumentException("十六进制数据不能为空", "Hexdata");
-        }
-        
-        // 根据地址范围确定寄存器类型和长度要求
-        if (startAddr >= 30001 && startAddr <= 39999) // 输入寄存器
-        {
-            if (hexData.Length % 4 != 0)
-            {
-                throw new ArgumentException("输入寄存器数据长度必须是4的倍数（每4个十六进制字符代表1个16位寄存器）", "Hexdata");
-            }
-        }
-        else if (startAddr >= 40001 && startAddr <= 49999) // 保持寄存器
-        {
-            if (hexData.Length % 4 != 0)
-            {
-                throw new ArgumentException("保持寄存器数据长度必须是4的倍数（每4个十六进制字符代表1个16位寄存器）", "Hexdata");
-            }
-        }
-        else if (startAddr >= 1 && startAddr <= 9999) // 线圈
-        {
-            if (hexData.Length % 2 != 0)
-            {
-                throw new ArgumentException("线圈数据长度必须是2的倍数（每2个十六进制字符代表1字节=8个线圈）", "Hexdata");
-            }
-        }
-        else if (startAddr >= 10001 && startAddr <= 19999) // 离散输入
-        {
-            if (hexData.Length % 2 != 0)
-            {
-                throw new ArgumentException("离散输入数据长度必须是2的倍数（每2个十六进制字符代表1字节=8个离散输入）", "Hexdata");
-            }
-        }
-        else if (startAddr >= 30001 && startAddr <= 39999) // 输入寄存器
-        {
-            if (hexData.Length % 4 != 0)
-            {
-                throw new ArgumentException("输入寄存器数据长度必须是4的倍数（每4个十六进制字符代表1个16位寄存器）", "Hexdata");
-            }
-        }
-        else if (startAddr >= 40001 && startAddr <= 49999) // 保持寄存器
-        {
-            if (hexData.Length % 4 != 0)
-            {
-                throw new ArgumentException("保持寄存器数据长度必须是4的倍数（每4个十六进制字符代表1个16位寄存器）", "Hexdata");
-            }
-        }
-        else
-        {
-            throw new ArgumentException("起始地址不在有效范围内（1-9999线圈，10001-19999离散输入，30001-39999输入寄存器，40001-49999保持寄存器）", "request.Startaddr");
-        }
+        return $"port_slave_registers_{port}_{slaveId}";
+    }
+
+    private void ClearPortSlaveCache(int port, string slaveId)
+    {
+        string cacheKey = GetPortSlaveRegistersCacheKey(port, slaveId);
+        _cache.Remove(cacheKey);
     }
 }

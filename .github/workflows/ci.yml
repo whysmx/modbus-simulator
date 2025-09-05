@@ -1,0 +1,75 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Backend: .NET 8 unit tests
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore & Test backend
+        run: |
+          dotnet restore modbus-simulator/ModbusSimulator.sln
+          dotnet test modbus-simulator/ModbusSimulator.Tests/ModbusSimulator.Tests.csproj -c Release --logger "trx;LogFileName=test-results.trx"
+
+      # Frontend: Node + pnpm + Playwright E2E against running backend & frontend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: corepack enable
+
+      - name: Install frontend deps & Playwright
+        working-directory: modbus-simulator-web
+        run: |
+          pnpm i
+          npx playwright install --with-deps
+
+      - name: Build backend
+        run: dotnet build modbus-simulator/ModbusSimulator/ModbusSimulator.csproj -c Release
+
+      - name: Run backend
+        run: |
+          dotnet run --project modbus-simulator/ModbusSimulator --urls http://localhost:5000 https://localhost:5001 &
+          echo $! > backend.pid
+
+      - name: Build frontend
+        working-directory: modbus-simulator-web
+        run: pnpm build
+
+      - name: Start frontend
+        working-directory: modbus-simulator-web
+        run: |
+          pnpm start &
+          echo $! > ../frontend.pid
+
+      - name: Wait for services
+        run: |
+          npx --yes wait-on http://localhost:3000
+
+      - name: Run E2E tests
+        working-directory: modbus-simulator-web
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: modbus-simulator-web/playwright-report
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kill $(cat backend.pid) || true
+          kill $(cat modbus-simulator-web/../frontend.pid) || true
+
+

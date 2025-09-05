@@ -375,6 +375,31 @@ public class SlaveServiceTests
     }
 
     [Fact]
+    public async Task DeleteSlaveAsync_NonExistentSlave_ShouldThrowKeyNotFoundException()
+    {
+        // Arrange
+        var connectionId = "conn";
+        var slaveId = "missing";
+
+        var connections = new List<ConnectionTree>
+        {
+            new ConnectionTree
+            {
+                Id = connectionId,
+                Name = "Test Connection",
+                Port = 502,
+                Slaves = new List<Slave> { new Slave { Id = "other", Connid = connectionId, Name = "Other", Slaveid = 2 } }
+            }
+        };
+        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => _service.DeleteSlaveAsync(connectionId, slaveId));
+        Assert.Contains("从机不存在", ex.Message);
+    }
+
+    [Fact]
     public async Task DeleteSlaveAsync_NonExistentConnection_ShouldThrowKeyNotFoundException()
     {
         // Arrange

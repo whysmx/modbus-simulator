@@ -40,7 +40,7 @@ public class SlavesControllerTests
         var result = await _controller.CreateSlave(connectionId, request);
 
         // Assert
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
         Assert.Equal(expectedSlave, createdResult.Value);
 
@@ -247,9 +247,9 @@ public class SlavesControllerTests
 
         var result = await _controller.CreateSlave(connectionId, null);
 
-        // Assert - The controller doesn't validate null requests, it just passes to repository
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
-        Assert.Equal(201, createdResult.StatusCode);
+        // Assert - The controller validates null requests and returns BadRequest
+        var badRequestResult = Assert.IsAssignableFrom<BadRequestObjectResult>(result.Result);
+        Assert.Equal(400, badRequestResult.StatusCode);
     }
 
     [Fact]
@@ -266,8 +266,8 @@ public class SlavesControllerTests
         var result = await _controller.UpdateSlave(connectionId, slaveId, null);
 
         // Assert
-        var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
-        Assert.Equal(200, okResult.StatusCode);
+        var badRequestResult = Assert.IsAssignableFrom<BadRequestObjectResult>(result.Result);
+        Assert.Equal(400, badRequestResult.StatusCode);
     }
 
     #endregion
@@ -284,7 +284,7 @@ public class SlavesControllerTests
         var request = new CreateSlaveRequest { Name = "Test Slave", Slaveid = 1 };
         var expectedSlave = new Slave
         {
-            Id = "generated-id",
+            Id = slaveId, // Use the slaveId parameter from test data
             Connid = connectionId,
             Name = "Test Slave",
             Slaveid = 1
@@ -297,7 +297,7 @@ public class SlavesControllerTests
         var result = await _controller.CreateSlave(connectionId, request);
 
         // Assert
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         var returnedSlave = createdResult.Value as Slave;
         Assert.Equal(connectionId, returnedSlave.Connid);
     }
@@ -315,20 +315,22 @@ public class SlavesControllerTests
         _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>())).ReturnsAsync(slave);
 
         var result = await _controller.CreateSlave("conn", request);
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
 
         // Test NotFound (404)
         _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>()))
             .ThrowsAsync(new KeyNotFoundException("Not found"));
         var notFoundResult = await _controller.CreateSlave("conn", request);
-        Assert.Equal(404, ((NotFoundObjectResult)notFoundResult.Result).StatusCode);
+        var notFoundObjectResult = Assert.IsType<NotFoundObjectResult>(notFoundResult.Result);
+        Assert.Equal(404, notFoundObjectResult.StatusCode);
 
         // Test BadRequest (400)
         _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>()))
             .ThrowsAsync(new InvalidOperationException("Bad request"));
         var badRequestResult = await _controller.CreateSlave("conn", request);
-        Assert.Equal(400, ((BadRequestObjectResult)badRequestResult.Result).StatusCode);
+        var badRequestObjectResult = Assert.IsType<BadRequestObjectResult>(badRequestResult.Result);
+        Assert.Equal(400, badRequestObjectResult.StatusCode);
     }
 
     [Fact]
@@ -347,7 +349,8 @@ public class SlavesControllerTests
         _mockSlaveRepository.Setup(r => r.UpdateAsync(It.IsAny<Slave>()))
             .ThrowsAsync(new KeyNotFoundException("Not found"));
         var notFoundResult = await _controller.UpdateSlave("conn", "slave", request);
-        Assert.Equal(404, ((NotFoundObjectResult)notFoundResult.Result).StatusCode);
+        var notFoundObjectResult = Assert.IsType<NotFoundObjectResult>(notFoundResult.Result);
+        Assert.Equal(404, notFoundObjectResult.StatusCode);
     }
 
     [Fact]

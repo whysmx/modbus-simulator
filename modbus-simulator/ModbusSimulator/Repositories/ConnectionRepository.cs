@@ -24,8 +24,8 @@ public class ConnectionRepository : IConnectionRepository
         }
 
         const string sql = @"
-            INSERT INTO connections (id, name, port)
-            VALUES (@Id, @Name, @Port);";
+            INSERT INTO connections (Id, Name, Port, ProtocolType)
+            VALUES (@Id, @Name, @Port, @ProtocolType);";
 
         await _connection.ExecuteAsync(sql, connection);
         return connection;
@@ -33,7 +33,7 @@ public class ConnectionRepository : IConnectionRepository
     
     private async Task<int> GetNextAvailablePortAsync()
     {
-        const string sql = "SELECT MAX(port) FROM connections";
+        const string sql = "SELECT MAX(Port) FROM connections";
         var maxPort = await _connection.QuerySingleOrDefaultAsync<int?>(sql);
         return maxPort.HasValue ? maxPort.Value + 1 : 502;
     }
@@ -41,20 +41,20 @@ public class ConnectionRepository : IConnectionRepository
     public async Task<Connection> UpdateAsync(Connection connection)
     {
         var existingCount = await _connection.QuerySingleAsync<int>(
-            "SELECT COUNT(1) FROM connections WHERE id = @Id", new { Id = connection.Id });
+            "SELECT COUNT(1) FROM connections WHERE Id = @Id", new { Id = connection.Id });
         if (existingCount == 0)
             throw new KeyNotFoundException("连接不存在");
         
         var portInUse = await _connection.QuerySingleAsync<int>(
-            "SELECT COUNT(1) FROM connections WHERE port = @Port AND id != @Id", 
+            "SELECT COUNT(1) FROM connections WHERE Port = @Port AND Id != @Id", 
             new { Port = connection.Port, Id = connection.Id });
         if (portInUse > 0)
             throw new InvalidOperationException("端口已被使用");
         
         const string sql = @"
             UPDATE connections 
-            SET name = @Name, port = @Port 
-            WHERE id = @Id;";
+            SET Name = @Name, Port = @Port, ProtocolType = @ProtocolType 
+            WHERE Id = @Id;";
         
         await _connection.ExecuteAsync(sql, connection);
         return connection;
@@ -62,7 +62,7 @@ public class ConnectionRepository : IConnectionRepository
     
     public async Task DeleteAsync(string id)
     {
-        const string sql = "DELETE FROM connections WHERE id = @Id";
+        const string sql = "DELETE FROM connections WHERE Id = @Id";
         var affected = await _connection.ExecuteAsync(sql, new { Id = id });
         if (affected == 0)
             throw new KeyNotFoundException("资源不存在");
@@ -72,11 +72,11 @@ public class ConnectionRepository : IConnectionRepository
     {
         const string sql = @"
             SELECT
-                c.id AS Id, c.name AS Name, c.port AS Port,
-                s.id AS Id, s.connid AS Connid, s.name AS Name, s.slaveid AS Slaveid
+                c.Id AS Id, c.Name AS Name, c.Port AS Port, c.ProtocolType AS ProtocolType,
+                s.Id AS Id, s.ConnId AS ConnId, s.Name AS Name, s.SlaveId AS SlaveId
             FROM connections c
-            LEFT JOIN slaves s ON c.id = s.connid
-            ORDER BY c.name, s.slaveid";
+            LEFT JOIN slaves s ON c.Id = s.ConnId
+            ORDER BY c.Name, s.SlaveId";
         
         var connectionDict = new Dictionary<string, ConnectionTree>();
         
@@ -91,6 +91,7 @@ public class ConnectionRepository : IConnectionRepository
                         Id = connection.Id,
                         Name = connection.Name,
                         Port = connection.Port,
+                        ProtocolType = connection.ProtocolType,
                         Slaves = new List<Slave>()
                     };
                     connectionDict[connection.Id] = connectionTree;

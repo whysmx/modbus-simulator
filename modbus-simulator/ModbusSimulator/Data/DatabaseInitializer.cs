@@ -14,38 +14,39 @@ public static class DatabaseInitializer
     {
         var createConnectionsTable = @"
             CREATE TABLE IF NOT EXISTS connections (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                port INTEGER NOT NULL UNIQUE
+                Id TEXT PRIMARY KEY,
+                Name TEXT NOT NULL UNIQUE,
+                Port INTEGER NOT NULL UNIQUE,
+                ProtocolType INTEGER NOT NULL DEFAULT 0
             );";
 
         var createSlavesTable = @"
             CREATE TABLE IF NOT EXISTS slaves (
-                id TEXT PRIMARY KEY,
-                connid TEXT NOT NULL,
-                name TEXT NOT NULL,
-                slaveid INTEGER NOT NULL,
+                Id TEXT PRIMARY KEY,
+                ConnId TEXT NOT NULL,
+                Name TEXT NOT NULL,
+                SlaveId INTEGER NOT NULL,
                 
-                FOREIGN KEY (connid) REFERENCES connections(id) ON DELETE CASCADE,
-                UNIQUE(connid, slaveid),
-                UNIQUE(connid, name)
+                FOREIGN KEY (ConnId) REFERENCES connections(Id) ON DELETE CASCADE,
+                UNIQUE(ConnId, SlaveId),
+                UNIQUE(ConnId, Name)
             );";
 
         var createRegistersTable = @"
             CREATE TABLE IF NOT EXISTS registers (
-                id TEXT PRIMARY KEY,
-                slaveid TEXT NOT NULL,
-                startaddr INTEGER NOT NULL,
-                hexdata TEXT NOT NULL,
+                Id TEXT PRIMARY KEY,
+                SlaveId TEXT NOT NULL,
+                StartAddr INTEGER NOT NULL,
+                HexData TEXT NOT NULL,
                 
-                FOREIGN KEY (slaveid) REFERENCES slaves(id) ON DELETE CASCADE,
-                UNIQUE(slaveid, startaddr)
+                FOREIGN KEY (SlaveId) REFERENCES slaves(Id) ON DELETE CASCADE,
+                UNIQUE(SlaveId, StartAddr)
             );";
 
         var createIndexes = @"
-            CREATE INDEX IF NOT EXISTS idx_slaves_conn ON slaves(connid);
-            CREATE INDEX IF NOT EXISTS idx_registers_slave ON registers(slaveid);
-            CREATE INDEX IF NOT EXISTS idx_registers_addr ON registers(slaveid, startaddr);";
+            CREATE INDEX IF NOT EXISTS idx_slaves_conn ON slaves(ConnId);
+            CREATE INDEX IF NOT EXISTS idx_registers_slave ON registers(SlaveId);
+            CREATE INDEX IF NOT EXISTS idx_registers_addr ON registers(SlaveId, StartAddr);";
 
         await connection.ExecuteAsync(createConnectionsTable);
         await connection.ExecuteAsync(createSlavesTable);

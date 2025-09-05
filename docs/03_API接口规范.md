@@ -25,9 +25,10 @@
 
 -- 通用对象定义
   Connection {
-    id: string,      -- 连接ID，32位无横杠UUID
-    name: string,    -- 连接名称
-    port: number     -- 端口号（新增连接时自动分配，从502开始递增）
+    id: string,        -- 连接ID，32位无横杠UUID
+    name: string,      -- 连接名称
+    port: number,      -- 端口号（新增连接时自动分配，从502开始递增）
+    protocolType: number  -- 协议类型：0=Modbus RTU Over TCP（默认），1=Modbus TCP
   }
 
   Slave {
@@ -61,6 +62,13 @@
   GET /api/connections/tree            返回：ConnectionTree[]
   ConnectionTree = Connection & { slaves: Slave[] }
 
+-- 树与寄存器加载策略（约定）
+  1) 设备树默认仅返回两层数据：连接(Connection) 与 从机(Slave)
+  2) 前端在“展开某个从机”时，调用下列接口拉取该从机下的全部寄存器组：
+     GET /api/connections/{id}/slaves/{slaveId}/registers
+  3) 前端根据返回数据的 startaddr 字段，将寄存器按地址区间分类为四种类型节点（线圈/离散输入/输入寄存器/保持寄存器），以补齐第三层，仅用于树展示与右侧联动
+  4) 树接口不返回寄存器明细，减少首屏数据量；寄存器列表接口用于按需懒加载
+
 
 -- 示例
   GET /api/connections/{id}/slaves/{slaveId}/registers 响应示例：
@@ -75,12 +83,20 @@
       "id": "0123456789abcdef0123456789abcdef",
       "name": "主连接",
       "port": 502,
+      "protocolType": 0,
       "slaves": [
         { "id": "00112233445566778899aabbccddeeff", "connid": "0123456789abcdef0123456789abcdef", "name": "从机1", "slaveid": 1 },
         { "id": "ffeeddccbbaa99887766554433221100", "connid": "0123456789abcdef0123456789abcdef", "name": "从机2", "slaveid": 2 }
       ]
     }
   ]
+
+
+-- 地址区间与类型映射（前端分类用）
+  - 线圈（Coil，FC01）：00001–09999（位型）
+  - 离散输入（Discrete Input，FC02）：10001–19999（位型）
+  - 输入寄存器（Input Register，FC04）：30001–39999（寄存器型）
+  - 保持寄存器（Holding Register，FC03）：40001–49999（寄存器型）
 
 
 -- 错误返回规范

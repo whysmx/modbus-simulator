@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ModbusSimulator.Models;
-using ModbusSimulator.Repositories;
+using ModbusSimulator.Services;
 
 namespace ModbusSimulator.Controllers;
 
@@ -8,11 +8,13 @@ namespace ModbusSimulator.Controllers;
 [Route("api/connections/{connectionId}/slaves/{slaveId}/registers")]
 public class RegistersController : ControllerBase
 {
-    private readonly IRegisterRepository _registerRepository;
+    private readonly IRegisterService _registerService;
+    private readonly IConnectionService _connectionService;
     
-    public RegistersController(IRegisterRepository registerRepository)
+    public RegistersController(IRegisterService registerService, IConnectionService connectionService)
     {
-        _registerRepository = registerRepository;
+        _registerService = registerService;
+        _connectionService = connectionService;
     }
     
     [HttpGet]
@@ -20,7 +22,9 @@ public class RegistersController : ControllerBase
     {
         try
         {
-            var registers = await _registerRepository.GetBySlaveIdAsync(slaveId);
+            // 获取连接信息以获取端口
+            var connection = await _connectionService.GetConnectionByIdAsync(connectionId);
+            var registers = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slaveId);
             return Ok(registers);
         }
         catch (KeyNotFoundException ex)
@@ -39,13 +43,7 @@ public class RegistersController : ControllerBase
         
         try
         {
-            var register = new Register 
-            { 
-                Slaveid = slaveId, 
-                Startaddr = request.Startaddr, 
-                Hexdata = request.Hexdata 
-            };
-            var created = await _registerRepository.CreateAsync(register);
+            var created = await _registerService.CreateRegisterAsync(connectionId, slaveId, request);
             return CreatedAtAction(nameof(GetRegisters), new { connectionId, slaveId }, created);
         }
         catch (KeyNotFoundException ex)
@@ -53,6 +51,10 @@ public class RegistersController : ControllerBase
             return NotFound(new { error = ex.Message, code = 404 });
         }
         catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message, code = 400 });
+        }
+        catch (ArgumentException ex)
         {
             return BadRequest(new { error = ex.Message, code = 400 });
         }
@@ -68,14 +70,7 @@ public class RegistersController : ControllerBase
         
         try
         {
-            var register = new Register 
-            { 
-                Id = registerId, 
-                Slaveid = slaveId, 
-                Startaddr = request.Startaddr, 
-                Hexdata = request.Hexdata 
-            };
-            var updated = await _registerRepository.UpdateAsync(register);
+            var updated = await _registerService.UpdateRegisterAsync(connectionId, slaveId, registerId, request);
             return Ok(updated);
         }
         catch (KeyNotFoundException ex)
@@ -86,6 +81,10 @@ public class RegistersController : ControllerBase
         {
             return BadRequest(new { error = ex.Message, code = 400 });
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message, code = 400 });
+        }
     }
     
     [HttpDelete("{registerId}")]
@@ -93,12 +92,16 @@ public class RegistersController : ControllerBase
     {
         try
         {
-            await _registerRepository.DeleteAsync(registerId);
+            await _registerService.DeleteRegisterAsync(connectionId, slaveId, registerId);
             return NoContent();
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { error = ex.Message, code = 404 });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message, code = 400 });
         }
     }
 }

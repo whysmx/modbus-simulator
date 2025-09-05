@@ -39,7 +39,7 @@ public class ConnectionsControllerTests
         var result = await _controller.CreateConnection(request);
 
         // Assert
-        var createdResult = Assert.IsAssignableFrom<CreatedResult>(result.Result);
+        var createdResult = Assert.IsAssignableFrom<CreatedAtActionResult>(result.Result);
         Assert.Equal(201, createdResult.StatusCode);
         Assert.Equal(expectedConnection, createdResult.Value);
         _mockService.Verify(s => s.CreateConnectionAsync(request), Times.Once);
@@ -62,11 +62,11 @@ public class ConnectionsControllerTests
         Assert.Equal(400, badRequestResult.StatusCode);
 
         var errorResponse = badRequestResult.Value;
-        var errorProperty = errorResponse.GetType().GetProperty("error");
+        var errorProperty = errorResponse!.GetType().GetProperty("error");
         var codeProperty = errorResponse.GetType().GetProperty("code");
 
-        Assert.Equal("连接名称不能为空", errorProperty.GetValue(errorResponse));
-        Assert.Equal(400, codeProperty.GetValue(errorResponse));
+        Assert.Equal("连接名称不能为空", errorProperty!.GetValue(errorResponse));
+        Assert.Equal(400, codeProperty!.GetValue(errorResponse));
     }
 
     [Fact]
@@ -86,10 +86,10 @@ public class ConnectionsControllerTests
         Assert.Equal(400, badRequestResult.StatusCode);
 
         var errorResponse = badRequestResult.Value;
-        var errorProperty = errorResponse.GetType().GetProperty("error");
+        var errorProperty = errorResponse!.GetType().GetProperty("error");
         var codeProperty = errorResponse.GetType().GetProperty("code");
 
-        Assert.Equal("连接名称已存在", errorProperty.GetValue(errorResponse));
+        Assert.Equal("连接名称已存在", errorProperty!.GetValue(errorResponse));
         Assert.Equal(400, codeProperty.GetValue(errorResponse));
     }
 
@@ -141,10 +141,10 @@ public class ConnectionsControllerTests
         Assert.Equal(404, notFoundResult.StatusCode);
 
         var errorResponse = notFoundResult.Value;
-        var errorProperty = errorResponse.GetType().GetProperty("error");
+        var errorProperty = errorResponse!.GetType().GetProperty("error");
         var codeProperty = errorResponse.GetType().GetProperty("code");
 
-        Assert.Equal("连接不存在", errorProperty.GetValue(errorResponse));
+        Assert.Equal("连接不存在", errorProperty!.GetValue(errorResponse));
         Assert.Equal(404, codeProperty.GetValue(errorResponse));
     }
 
@@ -166,7 +166,7 @@ public class ConnectionsControllerTests
         Assert.Equal(400, badRequestResult.StatusCode);
 
         var errorResponse = badRequestResult.Value;
-        var errorProperty = errorResponse.GetType().GetProperty("error");
+        var errorProperty = errorResponse!.GetType().GetProperty("error");
         var codeProperty = errorResponse.GetType().GetProperty("code");
 
         Assert.Equal("端口已被使用", errorProperty.GetValue(errorResponse));
@@ -191,11 +191,11 @@ public class ConnectionsControllerTests
         Assert.Equal(400, badRequestResult.StatusCode);
 
         var errorResponse = badRequestResult.Value;
-        var errorProperty = errorResponse.GetType().GetProperty("error");
+        var errorProperty = errorResponse!.GetType().GetProperty("error");
         var codeProperty = errorResponse.GetType().GetProperty("code");
 
-        Assert.Equal("连接名称不能为空", errorProperty.GetValue(errorResponse));
-        Assert.Equal(400, codeProperty.GetValue(errorResponse));
+        Assert.Equal("连接名称不能为空", errorProperty!.GetValue(errorResponse));
+        Assert.Equal(400, codeProperty!.GetValue(errorResponse));
     }
 
     #endregion
@@ -234,10 +234,10 @@ public class ConnectionsControllerTests
         Assert.Equal(404, notFoundResult.StatusCode);
 
         var errorResponse = notFoundResult.Value;
-        var errorProperty = errorResponse.GetType().GetProperty("error");
+        var errorProperty = errorResponse!.GetType().GetProperty("error");
         var codeProperty = errorResponse.GetType().GetProperty("code");
 
-        Assert.Equal("连接不存在", errorProperty.GetValue(errorResponse));
+        Assert.Equal("连接不存在", errorProperty!.GetValue(errorResponse));
         Assert.Equal(404, codeProperty.GetValue(errorResponse));
     }
 
@@ -258,7 +258,7 @@ public class ConnectionsControllerTests
         Assert.Equal(400, badRequestResult.StatusCode);
 
         var errorResponse = badRequestResult.Value;
-        var errorProperty = errorResponse.GetType().GetProperty("error");
+        var errorProperty = errorResponse!.GetType().GetProperty("error");
         var codeProperty = errorResponse.GetType().GetProperty("code");
 
         Assert.Equal("连接ID不能为空", errorProperty.GetValue(errorResponse));

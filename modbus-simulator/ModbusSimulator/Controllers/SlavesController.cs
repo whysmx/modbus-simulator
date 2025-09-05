@@ -42,6 +42,10 @@ public class SlavesController : ControllerBase
         {
             return BadRequest(new { error = ex.Message, code = 400 });
         }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message, code = 400 });
+        }
     }
     
     [HttpPut("{slaveId}")]

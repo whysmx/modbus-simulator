@@ -1,0 +1,147 @@
+# language of the project (csharp, python, rust, java, typescript, go, cpp, or ruby)
+#  * For C, use cpp
+#  * For JavaScript, use typescript
+# Special requirements:
+#  * csharp: Requires the presence of a .sln file in the project folder.
+language: csharp
+
+# whether to use the project's gitignore file to ignore files
+# Added on 2025-04-07
+ignore_all_files_in_gitignore: true
+# list of additional paths to ignore
+# same syntax as gitignore, so you can use * and **
+# Was previously called `ignored_dirs`, please update your config if you are using that.
+# Added (renamed) on 2025-04-07
+ignored_paths:
+  - "**/bin/**"
+  - "**/obj/**"
+  - "**/.next/**"
+  - "**/node_modules/**"
+  - "**/test-results/**"
+  - "**/playwright-report/**"
+  - "**/coverage/**"
+  - "**/coveragereport/**"
+
+# whether the project is in read-only mode
+# If set to true, all editing tools will be disabled and attempts to use them will result in an error
+# Added on 2025-04-18
+read_only: false
+
+
+# list of tool names to exclude. We recommend not excluding any tools, see the readme for more details.
+# Below is the complete list of tools for convenience.
+# To make sure you have the latest list of tools, and to view their descriptions, 
+# execute `uv run scripts/print_tool_overview.py`.
+#
+#  * `activate_project`: Activates a project by name.
+#  * `check_onboarding_performed`: Checks whether project onboarding was already performed.
+#  * `create_text_file`: Creates/overwrites a file in the project directory.
+#  * `delete_lines`: Deletes a range of lines within a file.
+#  * `delete_memory`: Deletes a memory from Serena's project-specific memory store.
+#  * `execute_shell_command`: Executes a shell command.
+#  * `find_referencing_code_snippets`: Finds code snippets in which the symbol at the given location is referenced.
+#  * `find_referencing_symbols`: Finds symbols that reference the symbol at the given location (optionally filtered by type).
+#  * `find_symbol`: Performs a global (or local) search for symbols with/containing a given name/substring (optionally filtered by type).
+#  * `get_current_config`: Prints the current configuration of the agent, including the active and available projects, tools, contexts, and modes.
+#  * `get_symbols_overview`: Gets an overview of the top-level symbols defined in a given file.
+#  * `initial_instructions`: Gets the initial instructions for the current project.
+#     Should only be used in settings where the system prompt cannot be set,
+#     e.g. in clients you have no control over, like Claude Desktop.
+#  * `insert_after_symbol`: Inserts content after the end of the definition of a given symbol.
+#  * `insert_at_line`: Inserts content at a given line in a file.
+#  * `insert_before_symbol`: Inserts content before the beginning of the definition of a given symbol.
+#  * `list_dir`: Lists files and directories in the given directory (optionally with recursion).
+#  * `list_memories`: Lists memories in Serena's project-specific memory store.
+#  * `onboarding`: Performs onboarding (identifying the project structure and essential tasks, e.g. for testing or building).
+#  * `prepare_for_new_conversation`: Provides instructions for preparing for a new conversation (in order to continue with the necessary context).
+#  * `read_file`: Reads a file within the project directory.
+#  * `read_memory`: Reads the memory with the given name from Serena's project-specific memory store.
+#  * `remove_project`: Removes a project from the Serena configuration.
+#  * `replace_lines`: Replaces a range of lines within a file with new content.
+#  * `replace_symbol_body`: Replaces the full definition of a symbol.
+#  * `restart_language_server`: Restarts the language server, may be necessary when edits not through Serena happen.
+#  * `search_for_pattern`: Performs a search for a pattern in the project.
+#  * `summarize_changes`: Provides instructions for summarizing the changes made to the codebase.
+#  * `switch_modes`: Activates modes by providing a list of their names
+#  * `think_about_collected_information`: Thinking tool for pondering the completeness of collected information.
+#  * `think_about_task_adherence`: Thinking tool for determining whether the agent is still on track with the current task.
+#  * `think_about_whether_you_are_done`: Thinking tool for determining whether the task is truly completed.
+#  * `write_memory`: Writes a named memory (for future reference) to Serena's project-specific memory store.
+excluded_tools: []
+
+# initial prompt for the project. It will always be given to the LLM upon activating the project
+# (contrary to the memories, which are loaded on demand).
+initial_prompt: |
+  这是一个 Modbus TCP 模拟器项目，包含后端API和前端Web应用：
+  
+  **后端 (modbus-simulator/)**:
+  - ASP.NET Core 8.0 API，使用SQLite数据库
+  - 分层架构：Controllers → Services → Repositories  
+  - 支持Modbus TCP协议（功能码01-04）
+  - 严格的TDD开发模式，测试位于ModbusSimulator.Tests
+  - 主要实体：Connection（连接配置）、Slave（从设备）、Register（寄存器）
+  
+  **前端 (modbus-simulator-web/)**:
+  - Next.js 15 + TypeScript + Tailwind CSS
+  - shadcn/ui 组件库，Zustand状态管理
+  - Playwright E2E测试
+  
+  **开发工作流**:
+  - 后端：dotnet build && dotnet test
+  - 前端：pnpm run dev, pnpm run test:e2e
+  - 部署前必须通过所有测试
+
+project_name: "modbus-simulator"
+
+commands:
+  # 后端命令
+  - name: build-backend
+    description: 构建后端解决方案
+    command: dotnet build
+    workdir: modbus-simulator
+  - name: run-backend
+    description: 运行后端API服务
+    command: dotnet run --project ModbusSimulator
+    workdir: modbus-simulator
+  - name: test-backend
+    description: 运行后端单元与集成测试
+    command: dotnet test
+    workdir: modbus-simulator
+  - name: test-backend-watch
+    description: 监视模式运行后端测试
+    command: dotnet watch test --project ModbusSimulator.Tests
+    workdir: modbus-simulator
+  - name: test-backend-coverage
+    description: 运行后端测试并生成覆盖率报告
+    command: dotnet test --collect:"XPlat Code Coverage"
+    workdir: modbus-simulator
+  
+  # 前端命令
+  - name: install-frontend
+    description: 安装前端依赖
+    command: pnpm install
+    workdir: modbus-simulator-web
+  - name: dev-frontend
+    description: 启动前端开发服务器
+    command: pnpm run dev
+    workdir: modbus-simulator-web
+  - name: build-frontend
+    description: 构建前端生产版本
+    command: pnpm run build
+    workdir: modbus-simulator-web
+  - name: start-frontend
+    description: 启动前端生产服务器
+    command: pnpm run start
+    workdir: modbus-simulator-web
+  - name: lint-frontend
+    description: 运行前端ESLint检查
+    command: pnpm run lint
+    workdir: modbus-simulator-web
+  - name: test-frontend-e2e
+    description: 运行前端 Playwright E2E 测试
+    command: pnpm run test:e2e
+    workdir: modbus-simulator-web
+  - name: test-frontend-e2e-ui
+    description: 以 UI 模式运行 Playwright 测试
+    command: pnpm run test:e2e:ui
+    workdir: modbus-simulator-web

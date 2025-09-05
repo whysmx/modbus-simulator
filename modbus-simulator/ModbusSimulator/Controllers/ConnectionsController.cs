@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ModbusSimulator.Models;
 using ModbusSimulator.Services;
+using ModbusSimulator.Enums;
 
 namespace ModbusSimulator.Controllers;
 
@@ -78,5 +79,21 @@ public class ConnectionsController : ControllerBase
     {
         var connectionTrees = await _connectionService.GetConnectionsTreeAsync();
         return Ok(connectionTrees);
+    }
+
+    [HttpGet("protocol-types")]
+    public ActionResult GetProtocolTypes()
+    {
+        var protocolTypes = Enum.GetValues<ModbusProtocolType>()
+            .Select(pt => new 
+            {
+                value = (int)pt,
+                name = pt.ToString(),
+                displayName = pt.GetDisplayName(),
+                description = pt.GetDescription()
+            })
+            .ToArray();
+        
+        return Ok(protocolTypes);
     }
 }

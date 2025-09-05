@@ -28,37 +28,38 @@ public class RegisterRepositoryTests : IDisposable
     {
         const string createConnectionsTable = @"
             CREATE TABLE connections (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                port INTEGER NOT NULL UNIQUE
+                Id TEXT PRIMARY KEY,
+                Name TEXT NOT NULL UNIQUE,
+                Port INTEGER NOT NULL UNIQUE,
+                ProtocolType INTEGER NOT NULL DEFAULT 0
             );";
 
         const string createSlavesTable = @"
             CREATE TABLE slaves (
-                id TEXT PRIMARY KEY,
-                connid TEXT NOT NULL,
-                name TEXT NOT NULL,
-                slaveid INTEGER NOT NULL,
-                FOREIGN KEY (connid) REFERENCES connections(id) ON DELETE CASCADE,
-                UNIQUE(connid, slaveid),
-                UNIQUE(connid, name)
+                Id TEXT PRIMARY KEY,
+                ConnId TEXT NOT NULL,
+                Name TEXT NOT NULL,
+                SlaveId INTEGER NOT NULL,
+                FOREIGN KEY (ConnId) REFERENCES connections(Id) ON DELETE CASCADE,
+                UNIQUE(ConnId, SlaveId),
+                UNIQUE(ConnId, Name)
             );";
 
         const string createRegistersTable = @"
             CREATE TABLE registers (
-                id TEXT PRIMARY KEY,
-                slaveid TEXT NOT NULL,
-                startaddr INTEGER NOT NULL,
-                hexdata TEXT NOT NULL,
-                FOREIGN KEY (slaveid) REFERENCES slaves(id) ON DELETE CASCADE,
-                UNIQUE(slaveid, startaddr)
+                Id TEXT PRIMARY KEY,
+                SlaveId TEXT NOT NULL,
+                StartAddr INTEGER NOT NULL,
+                HexData TEXT NOT NULL,
+                FOREIGN KEY (SlaveId) REFERENCES slaves(Id) ON DELETE CASCADE,
+                UNIQUE(SlaveId, StartAddr)
             );";
 
         // 创建索引
         const string createIndices = @"
-            CREATE INDEX idx_slaves_conn ON slaves(connid);
-            CREATE INDEX idx_registers_slave ON registers(slaveid);
-            CREATE INDEX idx_registers_addr ON registers(slaveid, startaddr);";
+            CREATE INDEX idx_slaves_conn ON slaves(ConnId);
+            CREATE INDEX idx_registers_slave ON registers(SlaveId);
+            CREATE INDEX idx_registers_addr ON registers(SlaveId, StartAddr);";
 
         using var command = _connection.CreateCommand();
         command.CommandText = createConnectionsTable + createSlavesTable + createRegistersTable + createIndices;
