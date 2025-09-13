@@ -287,7 +287,7 @@ export function DeviceTree({
                             <div className="text-xs text-red-600 px-2 py-1">加载失败：{getSlaveError(slave.id)}</div>
                           )}
                           {/* Show register types when not loading */}
-                          {(!isSlaveLoading(slave.id)) && ["线圈", "离散输入", "输入寄存器", "保持寄存器"].map((registerType) => {
+                          {(!isSlaveLoading(slave.id)) && ["保持寄存器", "输入寄存器", "线圈", "离散输入"].map((registerType) => {
                             const registersOfType = getRegistersByType(connection.id, slave.id, registerType)
                             const isSelectedRegisterType =
                               selectedConnectionId === connection.id &&
@@ -322,7 +322,33 @@ export function DeviceTree({
                                   >
                                     {registerType}
                                   </div>
-                                  <div className="text-xs text-muted-foreground">{registersOfType.length} 个寄存器组</div>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {(() => {
+                                      // 根据寄存器类型显示功能码标签
+                                      const typeMap: Record<string, { read: string[], write: string[] }> = {
+                                        "线圈": { read: ["01"], write: ["05", "15"] },
+                                        "离散输入": { read: ["02"], write: [] },
+                                        "输入寄存器": { read: ["04"], write: [] },
+                                        "保持寄存器": { read: ["03"], write: ["06", "16"] }
+                                      }
+                                      const codes = typeMap[registerType] || { read: [], write: [] }
+                                      return (
+                                        <>
+                                          {codes.read.map(code => (
+                                            <span key={`read-${code}`} className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                                              {code}
+                                            </span>
+                                          ))}
+                                          {codes.write.map(code => (
+                                            <span key={`write-${code}`} className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-red-100 text-red-700 border border-red-200">
+                                              {code}
+                                            </span>
+                                          ))}
+                                        </>
+                                      )
+                                    })()
+                                    }
+                                  </div>
                                 </div>
                                 <div
                                   className={cn(

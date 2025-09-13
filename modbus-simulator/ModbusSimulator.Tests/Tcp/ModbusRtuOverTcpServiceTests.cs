@@ -33,7 +33,7 @@ public class ModbusRtuOverTcpServiceTests
         // Arrange
         var slaveAddress = (byte)1;
         var functionCode = (byte)3; // Read Holding Registers
-        var startAddress = (ushort)40001; // 保持寄存器地址
+        var startAddress = (ushort)0; // 协议地址（相对地址），对应逻辑地址40001
         var quantity = (ushort)2; // 读取 2 个寄存器
 
         // 构建 RTU 请求帧: SlaveAddr + FunctionCode + StartAddr(2) + Quantity(2) + CRC(2)
@@ -98,7 +98,7 @@ public class ModbusRtuOverTcpServiceTests
         // Arrange
         var slaveAddress = (byte)1;
         var functionCode = (byte)4; // Read Input Registers
-        var startAddress = (ushort)30001; // 输入寄存器地址
+        var startAddress = (ushort)0; // 协议地址（相对地址），对应逻辑地址30001
         var quantity = (ushort)1;
 
         var request = new List<byte>
@@ -145,7 +145,7 @@ public class ModbusRtuOverTcpServiceTests
         // Arrange
         var slaveAddress = (byte)1;
         var functionCode = (byte)3;
-        var startAddress = (ushort)40001;
+        var startAddress = (ushort)0; // 协议地址（相对地址），对应逻辑地址40001
         var quantity = (ushort)1;
 
         var request = new List<byte>
@@ -189,7 +189,7 @@ public class ModbusRtuOverTcpServiceTests
         // Arrange
         var slaveAddress = (byte)1;
         var functionCode = (byte)3;
-        var startAddress = (ushort)20001; // 无效地址范围
+        var startAddress = (ushort)10000; // 明显超出保持寄存器范围的协议地址
         var quantity = (ushort)1;
 
         var request = new List<byte>

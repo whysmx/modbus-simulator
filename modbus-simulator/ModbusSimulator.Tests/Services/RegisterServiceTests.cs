@@ -43,28 +43,44 @@ public class RegisterServiceTests : IDisposable
     {
         // Arrange
         var port = 502;
-        var slaveId = "test-slave-id";
+        var slaveAddress = "1"; // 从机地址字符串
+        var slaveUuid = "test-slave-uuid"; // 从机UUID
         var expectedRegisters = new List<Register>
         {
-            new Register { Id = "reg1", Slaveid = slaveId, Startaddr = 40001, Hexdata = "ABCD" },
-            new Register { Id = "reg2", Slaveid = slaveId, Startaddr = 40002, Hexdata = "1234" }
+            new Register { Id = "reg1", Slaveid = slaveUuid, Startaddr = 40001, Hexdata = "ABCD" },
+            new Register { Id = "reg2", Slaveid = slaveUuid, Startaddr = 40002, Hexdata = "1234" }
         };
 
-        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveId)).ReturnsAsync(expectedRegisters);
+        // Mock connections tree with a connection and slave
+        var connections = new List<ConnectionTree>
+        {
+            new ConnectionTree
+            {
+                Id = "conn1",
+                Port = port,
+                Slaves = new List<Slave>
+                {
+                    new Slave { Id = slaveUuid, Slaveid = 1, Name = "Test Slave" }
+                }
+            }
+        };
+
+        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
+        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveUuid)).ReturnsAsync(expectedRegisters);
 
         // Act
-        var result = await _service.GetRegistersBySlaveIdAsync(port, slaveId);
+        var result = await _service.GetRegistersBySlaveIdAsync(port, slaveAddress);
 
         // Assert
         Assert.Equal(expectedRegisters, result);
-        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Once);
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveUuid), Times.Once);
         
         // Test cache by calling again - should not hit repository twice
-        var cachedResult = await _service.GetRegistersBySlaveIdAsync(port, slaveId);
+        var cachedResult = await _service.GetRegistersBySlaveIdAsync(port, slaveAddress);
         Assert.Equal(expectedRegisters, cachedResult);
         
         // Repository should still only be called once (from cache on second call)
-        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Once);
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveUuid), Times.Once);
     }
 
     [Fact]
@@ -76,8 +92,8 @@ public class RegisterServiceTests : IDisposable
         // Act & Assert
         var exception = await Assert.ThrowsAsync<ArgumentException>(
             () => _service.GetRegistersBySlaveIdAsync(port, ""));
-        Assert.Contains("从机ID不能为空", exception.Message);
-        Assert.Equal("slaveId", exception.ParamName);
+        Assert.Contains("从机地址不能为空", exception.Message);
+        Assert.Equal("slaveAddress", exception.ParamName);
     }
 
     [Fact]
@@ -86,42 +102,69 @@ public class RegisterServiceTests : IDisposable
         // Arrange
         var port1 = 502;
         var port2 = 503;
-        var slaveId = "test-slave-id";
+        var slaveAddress = "1"; // 从机地址
+        var slaveUuid1 = "test-slave-uuid-1";
+        var slaveUuid2 = "test-slave-uuid-2";
         
         var registers1 = new List<Register>
         {
-            new Register { Id = "reg1", Slaveid = slaveId, Startaddr = 40001, Hexdata = "ABCD" }
+            new Register { Id = "reg1", Slaveid = slaveUuid1, Startaddr = 40001, Hexdata = "ABCD" }
         };
         
         var registers2 = new List<Register>
         {
-            new Register { Id = "reg2", Slaveid = slaveId, Startaddr = 40002, Hexdata = "1234" }
+            new Register { Id = "reg2", Slaveid = slaveUuid2, Startaddr = 40002, Hexdata = "1234" }
         };
 
-        _mockRegisterRepository.SetupSequence(r => r.GetBySlaveIdAsync(slaveId))
-            .ReturnsAsync(registers1)
-            .ReturnsAsync(registers2);
+        // Mock两个不同的连接，每个连接有不同的从机
+        var connections = new List<ConnectionTree>
+        {
+            new ConnectionTree
+            {
+                Id = "conn1",
+                Port = port1,
+                Slaves = new List<Slave>
+                {
+                    new Slave { Id = slaveUuid1, Slaveid = 1, Name = "Test Slave 1" }
+                }
+            },
+            new ConnectionTree
+            {
+                Id = "conn2", 
+                Port = port2,
+                Slaves = new List<Slave>
+                {
+                    new Slave { Id = slaveUuid2, Slaveid = 1, Name = "Test Slave 2" }
+                }
+            }
+        };
+
+        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
+        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveUuid1)).ReturnsAsync(registers1);
+        _mockRegisterRepository.Setup(r => r.GetBySlaveIdAsync(slaveUuid2)).ReturnsAsync(registers2);
 
         // Act
-        var result1 = await _service.GetRegistersBySlaveIdAsync(port1, slaveId);
-        var result2 = await _service.GetRegistersBySlaveIdAsync(port2, slaveId);
+        var result1 = await _service.GetRegistersBySlaveIdAsync(port1, slaveAddress);
+        var result2 = await _service.GetRegistersBySlaveIdAsync(port2, slaveAddress);
 
         // Assert
         Assert.Equal(registers1, result1);
         Assert.Equal(registers2, result2);
         
         // Both ports should trigger separate repository calls
-        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Exactly(2));
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveUuid1), Times.Once);
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveUuid2), Times.Once);
         
         // Verify cache is working for each port independently
-        var cachedResult1 = await _service.GetRegistersBySlaveIdAsync(port1, slaveId);
-        var cachedResult2 = await _service.GetRegistersBySlaveIdAsync(port2, slaveId);
+        var cachedResult1 = await _service.GetRegistersBySlaveIdAsync(port1, slaveAddress);
+        var cachedResult2 = await _service.GetRegistersBySlaveIdAsync(port2, slaveAddress);
         
         Assert.Equal(registers1, cachedResult1);
         Assert.Equal(registers2, cachedResult2);
         
-        // Still only 2 repository calls (cache hit for both ports)
-        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveId), Times.Exactly(2));
+        // Still only one call each (cache hit for both ports)
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveUuid1), Times.Once);
+        _mockRegisterRepository.Verify(r => r.GetBySlaveIdAsync(slaveUuid2), Times.Once);
     }
 
     #endregion

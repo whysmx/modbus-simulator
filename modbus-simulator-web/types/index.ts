@@ -28,6 +28,8 @@ export interface Register {
   slaveid: string
   startaddr: number
   hexdata: string
+  names: string
+  coefficients: string
 }
 
 export interface RegisterDefinition {

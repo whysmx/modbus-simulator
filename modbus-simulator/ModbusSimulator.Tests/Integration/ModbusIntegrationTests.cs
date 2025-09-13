@@ -67,6 +67,8 @@ public class ModbusIntegrationTests : IDisposable
                 SlaveId TEXT NOT NULL,
                 StartAddr INTEGER NOT NULL,
                 HexData TEXT NOT NULL,
+                names TEXT NOT NULL DEFAULT '',
+                coefficients TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY (SlaveId) REFERENCES slaves(Id) ON DELETE CASCADE,
                 UNIQUE(SlaveId, StartAddr)
             );";
@@ -139,7 +141,7 @@ public class ModbusIntegrationTests : IDisposable
         Assert.Equal(slave.Slaveid, createdSlave.Slaveid);
 
         // 6. 验证从机下的所有寄存器
-        var registers = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var registers = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Equal(2, registers.Count());
 
         var coilReg = registers.First(r => r.Startaddr == 1);
@@ -218,15 +220,15 @@ public class ModbusIntegrationTests : IDisposable
         Assert.Single(conn2Tree.Slaves);
 
         // 验证从机1的寄存器
-        var slave1Registers = await _registerService.GetRegistersBySlaveIdAsync(connection1.Port, slave1.Id);
+        var slave1Registers = await _registerService.GetRegistersBySlaveIdAsync(connection1.Port, slave1.Slaveid.ToString());
         Assert.Equal(4, slave1Registers.Count());
 
         // 验证从机2没有寄存器
-        var slave2Registers = await _registerService.GetRegistersBySlaveIdAsync(connection1.Port, slave2.Id);
+        var slave2Registers = await _registerService.GetRegistersBySlaveIdAsync(connection1.Port, slave2.Slaveid.ToString());
         Assert.Empty(slave2Registers);
 
         // 验证从机3没有寄存器
-        var slave3Registers = await _registerService.GetRegistersBySlaveIdAsync(connection2.Port, slave3.Id);
+        var slave3Registers = await _registerService.GetRegistersBySlaveIdAsync(connection2.Port, slave3.Slaveid.ToString());
         Assert.Empty(slave3Registers);
     }
 
@@ -254,7 +256,7 @@ public class ModbusIntegrationTests : IDisposable
 
         // 验证从机也不存在
         // 注意：删除连接后，从机被级联删除，GetRegistersBySlaveIdAsync 会返回空列表而不是抛出异常
-        var emptyRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var emptyRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Empty(emptyRegisters);
     }
 
@@ -325,7 +327,7 @@ public class ModbusIntegrationTests : IDisposable
         await Task.WhenAll(registerTasks);
 
         // 验证所有寄存器都已创建
-        var registers = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var registers = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Equal(10, registers.Count());
 
         // 验证每个寄存器的唯一性
@@ -364,7 +366,7 @@ public class ModbusIntegrationTests : IDisposable
             new CreateRegisterRequest { Startaddr = 40001, Hexdata = "EF12AB34" }); // 2个16位保持寄存器
 
         // 2. 验证配置正确性
-        var registers = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var registers = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Equal(4, registers.Count());
 
         // 3. 模拟Modbus TCP客户端请求（这里我们通过直接调用服务来验证）
@@ -432,7 +434,7 @@ public class ModbusIntegrationTests : IDisposable
             new CreateRegisterRequest { Startaddr = 40100, Hexdata = "55556666" });
 
         // 3. 验证所有寄存器都创建成功
-        var allRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var allRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Equal(8, allRegisters.Count());
 
         // 4. 验证地址范围分组
@@ -482,7 +484,7 @@ public class ModbusIntegrationTests : IDisposable
         }
 
         // 2. 验证配置存在
-        var originalRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var originalRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Equal(4, originalRegisters.Count());
 
         // 3. 模拟"重启" - 创建新的服务实例（但使用相同数据库）
@@ -491,7 +493,7 @@ public class ModbusIntegrationTests : IDisposable
         var newRegisterService = new RegisterService(_registerRepository, _connectionRepository, _slaveRepository, _memoryCache);
 
         // 4. 验证配置仍然存在
-        var persistedRegisters = await newRegisterService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var persistedRegisters = await newRegisterService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Equal(4, persistedRegisters.Count());
 
         // 5. 验证数据完整性
@@ -542,7 +544,7 @@ public class ModbusIntegrationTests : IDisposable
         await Task.WhenAll(createTasks);
 
         // 4. 验证所有操作都成功完成
-        var allRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Id);
+        var allRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
         Assert.Equal(bulkSize, allRegisters.Count());
 
         // 5. 验证数据一致性

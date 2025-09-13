@@ -38,6 +38,8 @@ public static class DatabaseInitializer
                 SlaveId TEXT NOT NULL,
                 StartAddr INTEGER NOT NULL,
                 HexData TEXT NOT NULL,
+                Names TEXT DEFAULT '',
+                Coefficients TEXT DEFAULT '1',
                 
                 FOREIGN KEY (SlaveId) REFERENCES slaves(Id) ON DELETE CASCADE,
                 UNIQUE(SlaveId, StartAddr)

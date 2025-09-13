@@ -42,11 +42,13 @@
     id: string,         -- 寄存器块ID，32位无横杠UUID
     slaveid: string,   -- 所属从机ID
     startaddr: number,  -- 起始逻辑地址
-    hexdata: string     -- 连续数据的16进制字符串（大写、无0x前缀；依据地址区间确定规则）
+    hexdata: string,    -- 连续数据的16进制字符串（大写、无0x前缀；依据地址区间确定规则）
                         -- 当 startaddr ∈ [30001–39999] 或 [40001–49999]（功能码04/03，寄存器型）时：
                         --   长度为4的倍数；寄存器数量 = hexdata.Length / 4（每4个hex=1个16位寄存器）
                         -- 当 startaddr ∈ [00001–09999] 或 [10001–19999]（功能码01/02，位型）时：
                         --   长度为2的倍数；覆盖位数 = (hexdata.Length / 2) * 8（每2个hex=1字节=8位）
+    names: string,      -- 逗号分隔的寄存器名称（可选，用于前端显示）
+    coefficients: string -- 逗号分隔的显示系数（可选，空位置默认1.0）
   }
 
 
@@ -73,8 +75,22 @@
 -- 示例
   GET /api/connections/{id}/slaves/{slaveId}/registers 响应示例：
   [
-    { "id": "0a1b2c3d4e5f60718293a4b5c6d7e8f9", "slaveid": "00112233445566778899aabbccddeeff", "startaddr": 0, "hexdata": "00112233AABB" },
-    { "id": "9f8e7d6c5b4a3928171605f4e3d2c1b0", "slaveid": "00112233445566778899aabbccddeeff", "startaddr": 100, "hexdata": "DEADBEEF" }
+    { 
+      "id": "0a1b2c3d4e5f60718293a4b5c6d7e8f9", 
+      "slaveid": "00112233445566778899aabbccddeeff", 
+      "startaddr": 40001, 
+      "hexdata": "01020304", 
+      "names": "Temperature,Humidity",
+      "coefficients": "0.1,0.01"
+    },
+    { 
+      "id": "9f8e7d6c5b4a3928171605f4e3d2c1b0", 
+      "slaveid": "00112233445566778899aabbccddeeff", 
+      "startaddr": 30001, 
+      "hexdata": "DEADBEEF", 
+      "names": ",Pressure",
+      "coefficients": ",2.0"
+    }
   ]
 
   GET /api/connections/tree 响应示例：
@@ -119,3 +135,38 @@
   PUT /api/connections/abc123 时端口冲突 → 400 { "error": "端口已被使用", "code": 400 }
   PUT /api/connections/notfound 连接不存在 → 404 { "error": "连接不存在", "code": 404 }
   POST /api/connections/{id}/slaves/{slaveId}/registers 地址范围与已有记录重叠 → 400 { "error": "地址范围与已有记录重叠", "code": 400 }
+
+
+## 寄存器显示配置说明
+
+### Names 和 Coefficients 字段使用
+
+**Names 字段**：
+- 逗号分隔对应 hexdata 中每个寄存器的显示名称
+- 空名称使用空字符串（两个逗号间无内容）
+- 可为空字符串，表示不使用自定义名称
+
+**Coefficients 字段**：
+- 逗号分隔对应每个寄存器的显示系数
+- 空位置默认为 1.0（两个逗号间无内容）
+- 可为空字符串，表示所有系数为 1.0
+
+**前端处理逻辑**：
+1. 将 hexdata 按 4 个字符一组拆分为寄存器值
+2. 将 names 按逗号拆分，与寄存器值一一对应
+3. 将 coefficients 按逗号拆分，空位置使用 1.0
+4. 显示时：显示值 = 原始值 * 系数，显示名称为 names 中的对应值
+
+**示例说明**：
+```json
+{
+  "startaddr": 40001,
+  "hexdata": "01020304",      // 两个寄存器：0x0102=258, 0x0304=772
+  "names": "Temperature,Humidity",
+  "coefficients": "0.1,0.01"
+}
+
+// 前端显示效果：
+// 寄存器40001: Temperature = 25.8 (258 * 0.1)
+// 寄存器40002: Humidity = 7.72 (772 * 0.01)
+```

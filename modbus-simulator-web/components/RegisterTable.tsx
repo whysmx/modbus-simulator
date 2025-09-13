@@ -19,6 +19,8 @@ interface ParsedRegister {
   floatBADC: number | string
   floatDCBA: number | string
   stringValue: string
+  name: string
+  coefficient: string
   isModified: boolean
   originalHex: string
 }
@@ -142,6 +144,13 @@ export function RegisterTable() {
         const char2 = String.fromCharCode(uint16Value & 0xff)
         const stringValue = (char1 + char2).replace(/[\x00-\x1F\x7F]/g, ".")
 
+        // 解析名称和系数
+        const names = (apiReg.names || "").split(",")
+        const coefficients = (apiReg.coefficients || "").split(",")
+        const registerIndex = Math.floor(i / charsPerRegister)
+        const name = names[registerIndex]?.trim() || ""
+        const coefficient = coefficients[registerIndex]?.trim() || "1"
+
         wordRegisters.push({
           address,
           hexValue: registerHex, // 显示单个寄存器的16进制值
@@ -153,6 +162,8 @@ export function RegisterTable() {
           floatBADC: "NA",
           floatDCBA: "NA",
           stringValue,
+          name,
+          coefficient,
           isModified: false,
           originalHex: registerHex,
         })
@@ -227,6 +238,14 @@ export function RegisterTable() {
       return value.toExponential(3)
     }
     return value.toString()
+  }
+
+  function formatCoefficient(coefficient: string): string {
+    if (!coefficient || coefficient === "") return "1"
+    const num = parseFloat(coefficient)
+    if (isNaN(num)) return coefficient
+    // 如果是整数，不显示小数点
+    return num % 1 === 0 ? num.toString() : coefficient
   }
 
   const handleCellEdit = (address: number, field: string, value: string) => {
@@ -662,7 +681,8 @@ export function RegisterTable() {
                 <tr>
                   <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">地址</th>
                   <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">Hex</th>
-                  <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">Binary</th>
+                  <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">名称</th>
+                  <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">系数</th>
                   <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">Int16</th>
                   <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">UInt16</th>
                   <th className="text-center p-3 font-semibold text-slate-700 border-r border-slate-300">
@@ -706,12 +726,14 @@ export function RegisterTable() {
                         />
                       </td>
                       <td className="p-3 border-r border-slate-200 text-center">
-                        <EditableCell
-                          value={displayData.binaryValue}
-                          address={register.address}
-                          field="binaryValue"
-                          className="font-mono text-xs text-green-700 text-center"
-                        />
+                        <div className="text-xs text-slate-700 font-medium">
+                          {displayData.name || ""}
+                        </div>
+                      </td>
+                      <td className="p-3 border-r border-slate-200 text-center">
+                        <div className="text-xs text-slate-600 font-mono">
+                          {formatCoefficient(displayData.coefficient)}
+                        </div>
                       </td>
                       <td className="p-3 border-r border-slate-200 text-center">
                         <EditableCell

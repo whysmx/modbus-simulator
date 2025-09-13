@@ -16,7 +16,7 @@ public class RegisterRepository : IRegisterRepository
     public async Task<IEnumerable<Register>> GetBySlaveIdAsync(string slaveId)
     {
         const string sql = @"
-            SELECT id, slaveid, startaddr, hexdata 
+            SELECT id, slaveid, startaddr, hexdata, names, coefficients
             FROM registers 
             WHERE slaveid = @SlaveId
             ORDER BY startaddr";
@@ -29,8 +29,8 @@ public class RegisterRepository : IRegisterRepository
         register.Id = Guid.NewGuid().ToString("N");
         
         const string sql = @"
-            INSERT INTO registers (id, slaveid, startaddr, hexdata) 
-            VALUES (@Id, @Slaveid, @Startaddr, @Hexdata);";
+            INSERT INTO registers (id, slaveid, startaddr, hexdata, names, coefficients) 
+            VALUES (@Id, @Slaveid, @Startaddr, @Hexdata, @Names, @Coefficients);";
         
         await _connection.ExecuteAsync(sql, register);
         return register;
@@ -45,7 +45,7 @@ public class RegisterRepository : IRegisterRepository
         
         const string sql = @"
             UPDATE registers 
-            SET startaddr = @Startaddr, hexdata = @Hexdata
+            SET startaddr = @Startaddr, hexdata = @Hexdata, names = @Names, coefficients = @Coefficients
             WHERE id = @Id;";
         
         await _connection.ExecuteAsync(sql, register);

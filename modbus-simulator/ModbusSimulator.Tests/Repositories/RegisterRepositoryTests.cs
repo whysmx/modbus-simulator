@@ -51,6 +51,8 @@ public class RegisterRepositoryTests : IDisposable
                 SlaveId TEXT NOT NULL,
                 StartAddr INTEGER NOT NULL,
                 HexData TEXT NOT NULL,
+                names TEXT NOT NULL DEFAULT '',
+                coefficients TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY (SlaveId) REFERENCES slaves(Id) ON DELETE CASCADE,
                 UNIQUE(SlaveId, StartAddr)
             );";

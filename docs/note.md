@@ -1,3 +1,50 @@
+# Register Display Configuration Extension
+
+## 需求概述
+为寄存器添加名称和显示系数字段，用于前端展示时的数据标识和数值转换。
+
+## 数据库设计
+在 `registers` 表添加两个新字段：
+- `names TEXT NOT NULL DEFAULT ''`: 逗号分隔的寄存器名称 
+- `coefficients TEXT NOT NULL DEFAULT ''`: 逗号分隔的显示系数
+
+### 存储格式
+```sql
+-- 示例：hexdata="01020304" 对应2个寄存器
+names: "Temperature,Humidity"           -- 两个寄存器的名称
+coefficients: "0.1,"                   -- 第一个0.1，第二个默认1.0（空字符串）
+```
+
+### 格式规则
+- 使用逗号分隔多个值
+- 空位置用空字符串表示（两个逗号间无内容）
+- names空值表示该位置无名称
+- coefficients空值表示该位置使用默认系数1.0
+- 字段不可为null，默认空字符串
+
+## 实施完成 ✅
+
+### ✅ 已完成的修改
+- [x] Register模型：添加Names和Coefficients字段（string，非null）
+- [x] Repository：更新CRUD的SQL语句包含新字段  
+- [x] Request对象：CreateRegisterRequest和UpdateRegisterRequest添加新字段
+- [x] 数据库迁移：执行ALTER TABLE添加新字段
+- [x] 测试修复：更新测试用例中的表结构定义
+- [x] 验证：所有391个测试通过，功能正常
+
+### 🎯 功能验证
+- 数据库表已成功添加names和coefficients字段
+- Register模型正确包含新字段并设置默认空值
+- Repository层CRUD操作正确处理新字段
+- 测试套件完全通过，无破坏性变更
+
+## 前端处理
+- 所有验证和解析由前端JavaScript处理
+- 后端仅存储逗号分隔的字符串
+- 复用现有CRUD接口，无需新增API
+
+---
+
 # TODO: 双层树 + 展开加载第三层 调整清单
 
 ## 前端（modbus-simulator-web）
@@ -32,3 +79,6 @@ dotnet test "/Users/wen/Desktop/code/10Modbus/modbus-simulator/modbus-simulator/
 
 /Users/wen/.dotnet/tools/reportgenerator -reports:"/Users/wen/Desktop/code/10Modbus/modbus-simulator/modbus-simulator/ModbusSimulator.Tests/TestResults/**/coverage.cobertura.xml" -targetdir:"/Users/wen/Desktop/code/10Modbus/modbus-simulator/coveragereport"
 open "/Users/wen/Desktop/code/10Modbus/modbus-simulator/coveragereport/index.html"
+
+
+ps aux | grep -i modbus | grep -v grep

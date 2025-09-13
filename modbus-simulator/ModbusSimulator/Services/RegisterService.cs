@@ -23,23 +23,73 @@ public class RegisterService : IRegisterService
         _cache = cache;
     }
 
-    public async Task<IEnumerable<Register>> GetRegistersBySlaveIdAsync(int port, string slaveId)
+    public async Task<IEnumerable<Register>> GetRegistersBySlaveIdAsync(int port, string slaveAddress)
     {
-        // 验证从机ID
-        if (string.IsNullOrWhiteSpace(slaveId))
+        // 验证从机地址
+        if (string.IsNullOrWhiteSpace(slaveAddress))
         {
-            throw new ArgumentException("从机ID不能为空", nameof(slaveId));
+            throw new ArgumentException("从机地址不能为空", nameof(slaveAddress));
         }
 
-        // 使用基于端口的缓存
-        string cacheKey = GetPortSlaveRegistersCacheKey(port, slaveId);
+        // 添加调试信息
+        Console.WriteLine($"[DEBUG] GetRegistersBySlaveIdAsync - Port: {port}, SlaveAddress: '{slaveAddress}' (Length: {slaveAddress.Length})");
+
+        // 使用基于端口和从机地址的缓存
+        string cacheKey = GetPortSlaveRegistersCacheKey(port, slaveAddress);
         if (_cache.TryGetValue(cacheKey, out IEnumerable<Register> cachedRegisters))
         {
             return cachedRegisters;
         }
 
-        // 从数据库获取数据
-        var registers = await _registerRepository.GetBySlaveIdAsync(slaveId);
+        // 首先根据端口查找连接，然后根据从机地址查找从机ID
+        var connections = await _connectionRepository.GetConnectionsTreeAsync();
+        var connection = connections.FirstOrDefault(c => c.Port == port);
+        if (connection == null)
+        {
+            Console.WriteLine($"[DEBUG] No connection found for port {port}");
+            return new List<Register>();
+        }
+
+        // 将字符串从机地址转换为整数进行匹配，添加更详细的错误信息
+        if (!int.TryParse(slaveAddress.Trim(), out int slaveAddressInt))
+        {
+            Console.WriteLine($"[DEBUG] Failed to parse slaveAddress: '{slaveAddress}' (after trim: '{slaveAddress.Trim()}')");
+            // 尝试解析为十六进制
+            if (slaveAddress.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!int.TryParse(slaveAddress[2..], System.Globalization.NumberStyles.HexNumber, null, out slaveAddressInt))
+                {
+                    throw new ArgumentException($"从机地址格式无效: '{slaveAddress}' - 无法解析为十进制或十六进制数字", nameof(slaveAddress));
+                }
+            }
+            else
+            {
+                throw new ArgumentException($"从机地址格式无效: '{slaveAddress}' - 必须是有效的数字", nameof(slaveAddress));
+            }
+        }
+
+        Console.WriteLine($"[DEBUG] Parsed slaveAddress {slaveAddress} to int {slaveAddressInt}");
+
+        var slave = connection.Slaves.FirstOrDefault(s => s.Slaveid == slaveAddressInt);
+        if (slave == null)
+        {
+            Console.WriteLine($"[DEBUG] No slave found with Slaveid {slaveAddressInt}. Available slaves:");
+            foreach (var s in connection.Slaves)
+            {
+                Console.WriteLine($"[DEBUG] - Slave ID: {s.Id}, Slaveid: {s.Slaveid}");
+            }
+            return new List<Register>();
+        }
+
+        // 从数据库获取数据，使用从机的UUID
+        var registers = await _registerRepository.GetBySlaveIdAsync(slave.Id);
+        
+        // 调试信息：记录查找到的寄存器数量和数据
+        Console.WriteLine($"[DEBUG] Found slave {slave.Id} with {registers.Count()} registers");
+        foreach (var reg in registers)
+        {
+            Console.WriteLine($"[DEBUG] Register - Addr: {reg.Startaddr}, Data: '{reg.Hexdata}'");
+        }
         
         // 缓存结果，过期时间设为24小时（主要依靠手动清除）
         _cache.Set(cacheKey, registers, TimeSpan.FromHours(24));
@@ -135,7 +185,9 @@ public class RegisterService : IRegisterService
             Id = registerId,
             Slaveid = slaveId,
             Startaddr = request.Startaddr,
-            Hexdata = request.Hexdata // 保存原始数据，不做任何处理
+            Hexdata = request.Hexdata, // 保存原始数据，不做任何处理
+            Names = request.Names ?? string.Empty,
+            Coefficients = request.Coefficients ?? "1"
         };
 
         try
@@ -207,14 +259,32 @@ public class RegisterService : IRegisterService
     }
 
     // 缓存相关方法
-    private string GetPortSlaveRegistersCacheKey(int port, string slaveId)
+    private string GetPortSlaveRegistersCacheKey(int port, string slaveAddress)
     {
-        return $"port_slave_registers_{port}_{slaveId}";
+        return $"port_slave_registers_{port}_{slaveAddress}";
     }
 
     private void ClearPortSlaveCache(int port, string slaveId)
     {
-        string cacheKey = GetPortSlaveRegistersCacheKey(port, slaveId);
-        _cache.Remove(cacheKey);
+        // 根据slaveId查找对应的从机地址，清除相应的缓存
+        // 注意：这里的slaveId是UUID，我们需要找到对应的从机地址
+        try
+        {
+            var connections = _connectionRepository.GetConnectionsTreeAsync().Result;
+            var connection = connections.FirstOrDefault(c => c.Port == port);
+            if (connection != null)
+            {
+                var slave = connection.Slaves.FirstOrDefault(s => s.Id == slaveId);
+                if (slave != null)
+                {
+                    string cacheKey = GetPortSlaveRegistersCacheKey(port, slave.Slaveid.ToString());
+                    _cache.Remove(cacheKey);
+                }
+            }
+        }
+        catch
+        {
+            // 如果清除缓存失败，忽略错误（缓存会自动过期）
+        }
     }
 }

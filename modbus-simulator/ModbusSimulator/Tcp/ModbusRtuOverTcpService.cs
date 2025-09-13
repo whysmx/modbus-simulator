@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using ModbusSimulator.Models;
 using ModbusSimulator.Services;
 
 namespace ModbusSimulator.Tcp;
@@ -142,15 +143,18 @@ public class ModbusRtuOverTcpService : IProtocolHandler
 
         // 根据功能码将协议地址转换为逻辑地址
         int logicalBaseAddress = 0;
+        int maxAddress = 0;
         
         switch (frame.FunctionCode)
         {
             case 3: // 读保持寄存器
                 logicalBaseAddress = 40001; // 协议地址0000 -> 逻辑地址40001
+                maxAddress = 49999;
                 break;
             
             case 4: // 读输入寄存器
                 logicalBaseAddress = 30001; // 协议地址0000 -> 逻辑地址30001
+                maxAddress = 39999;
                 break;
             
             default:
@@ -159,26 +163,13 @@ public class ModbusRtuOverTcpService : IProtocolHandler
 
         Console.WriteLine($"逻辑基础地址: {logicalBaseAddress}");
 
-        // 临时测试：硬编码测试数据验证地址转换逻辑
-        if (frame.SlaveAddress == 1 && frame.FunctionCode == 4 && protocolAddress == 0)
-        {
-            Console.WriteLine("*** 使用硬编码测试数据 ***");
-            var responseData = new List<byte>();
-            
-            // 硬编码返回12345678
-            // 第一个寄存器: 1234
-            responseData.AddRange(new byte[] { 0x12, 0x34 });
-            // 第二个寄存器: 5678  
-            responseData.AddRange(new byte[] { 0x56, 0x78 });
-            
-            Console.WriteLine($"硬编码响应数据: {BitConverter.ToString(responseData.ToArray())}");
+        // 验证地址范围
+        var logicalStartAddress = logicalBaseAddress + protocolAddress;
+        var logicalEndAddress = logicalStartAddress + quantity - 1;
 
-            // 构建响应：字节数 + 数据
-            var response = new List<byte>();
-            response.Add((byte)(responseData.Count)); // 字节数
-            response.AddRange(responseData);
-            
-            return response.ToArray();
+        if (logicalStartAddress < logicalBaseAddress || logicalEndAddress > maxAddress)
+        {
+            throw new InvalidOperationException("Invalid data address");
         }
 
         try
@@ -202,32 +193,59 @@ public class ModbusRtuOverTcpService : IProtocolHandler
                 var logicalAddress = logicalBaseAddress + protocolAddress + i;
                 Console.WriteLine($"查找逻辑地址: {logicalAddress} (基础{logicalBaseAddress} + 协议{protocolAddress} + 偏移{i})");
                 
-                var register = registers.FirstOrDefault(r => r.Startaddr == logicalAddress);
+                // 修复：查找包含目标地址的寄存器记录，而不是精确匹配地址
+                Register foundRegister = null;
+                int registerOffsetInData = 0;
                 
-                if (register != null && !string.IsNullOrEmpty(register.Hexdata))
+                foreach (var reg in registers)
                 {
-                    Console.WriteLine($"  找到寄存器: 地址{register.Startaddr}, 数据{register.Hexdata}");
+                    if (string.IsNullOrEmpty(reg.Hexdata)) continue;
+                    
+                    // 清理十六进制数据
+                    var hexData = reg.Hexdata.Trim().Replace(" ", "");
+                    if (hexData.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                        hexData = hexData[2..];
+                    
+                    // 计算这个寄存器记录包含多少个16位寄存器
+                    var registerCount = hexData.Length / 4;
+                    var endAddress = reg.Startaddr + registerCount - 1;
+                    
+                    // 检查目标地址是否在这个寄存器记录的范围内
+                    if (logicalAddress >= reg.Startaddr && logicalAddress <= endAddress)
+                    {
+                        foundRegister = reg;
+                        registerOffsetInData = logicalAddress - reg.Startaddr; // 在数据中的偏移
+                        break;
+                    }
+                }
+                
+                if (foundRegister != null && !string.IsNullOrEmpty(foundRegister.Hexdata))
+                {
+                    Console.WriteLine($"  找到寄存器: 地址{foundRegister.Startaddr}, 数据{foundRegister.Hexdata}");
                     
                     // 解析十六进制数据
-                    var hexValue = register.Hexdata.Trim();
+                    var hexValue = foundRegister.Hexdata.Trim().Replace(" ", "");
                     if (hexValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                     {
                         hexValue = hexValue[2..];
                     }
 
-                    // 处理多寄存器数据：从hexdata中按寄存器索引提取对应的数据
-                    // 每个寄存器2字节=4个十六进制字符
-                    var registerIndex = i; // 当前寄存器在请求中的索引
-                    var hexStartIndex = registerIndex * 4; // 在hexdata中的起始位置
+                    // 修复：根据在寄存器记录中的偏移提取数据，而不是根据请求索引
+                    var hexStartIndex = registerOffsetInData * 4; // 每个寄存器4个十六进制字符
                     string registerHex = "";
 
-                    if (hexValue.Length > hexStartIndex)
+                    if (hexValue.Length > hexStartIndex && hexStartIndex + 4 <= hexValue.Length)
                     {
-                        var availableLength = Math.Min(4, hexValue.Length - hexStartIndex);
-                        registerHex = hexValue.Substring(hexStartIndex, availableLength);
+                        registerHex = hexValue.Substring(hexStartIndex, 4);
+                    }
+                    else if (hexValue.Length > hexStartIndex)
+                    {
+                        // 处理不足4个字符的情况
+                        var availableLength = hexValue.Length - hexStartIndex;
+                        registerHex = hexValue.Substring(hexStartIndex, availableLength).PadRight(4, '0');
                     }
 
-                    Console.WriteLine($"  提取十六进制: {registerHex} (索引{registerIndex}, 起始{hexStartIndex})");
+                    Console.WriteLine($"  提取十六进制: {registerHex} (记录内偏移{registerOffsetInData}, 字符偏移{hexStartIndex})");
 
                     // 确保是偶数长度的十六进制字符串
                     if (registerHex.Length % 2 != 0)
@@ -259,11 +277,16 @@ public class ModbusRtuOverTcpService : IProtocolHandler
             }
 
             Console.WriteLine($"响应数据: {BitConverter.ToString(responseData.ToArray())}");
+            Console.WriteLine($"响应数据长度: {responseData.Count} 字节");
+            Console.WriteLine($"期望数据长度: {quantity * 2} 字节 ({quantity} 个寄存器)");
 
             // 构建响应：字节数 + 数据
             var response = new List<byte>();
             response.Add((byte)(responseData.Count)); // 字节数
             response.AddRange(responseData);
+            
+            Console.WriteLine($"最终响应帧: {BitConverter.ToString(response.ToArray())}");
+            Console.WriteLine($"最终响应帧长度: {response.Count} 字节");
             
             return response.ToArray();
         }

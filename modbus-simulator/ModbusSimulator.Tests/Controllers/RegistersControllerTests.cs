@@ -29,6 +29,7 @@ public class RegistersControllerTests
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
         var testPort = 502;
+        var slaveAddress = 1; // 从机的数字地址
         var expectedRegisters = new List<Register>
         {
             new Register { Id = "reg1", Slaveid = slaveId, Startaddr = 40001, Hexdata = "ABCD" },
@@ -36,8 +37,24 @@ public class RegistersControllerTests
         };
 
         var mockConnection = new Connection { Id = connectionId, Port = testPort };
+        
+        // Mock连接树，包含从机信息
+        var connectionTree = new List<ConnectionTree>
+        {
+            new ConnectionTree
+            {
+                Id = connectionId,
+                Port = testPort,
+                Slaves = new List<Slave>
+                {
+                    new Slave { Id = slaveId, Slaveid = slaveAddress, Name = "Test Slave" }
+                }
+            }
+        };
+        
         _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
-        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId)).ReturnsAsync(expectedRegisters);
+        _mockConnectionService.Setup(c => c.GetConnectionsTreeAsync()).ReturnsAsync(connectionTree);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveAddress.ToString())).ReturnsAsync(expectedRegisters);
 
         // Act
         var result = await _controller.GetRegisters(connectionId, slaveId);
@@ -48,7 +65,7 @@ public class RegistersControllerTests
         var returnedRegisters = okResult.Value as IEnumerable<Register>;
         Assert.Equal(expectedRegisters, returnedRegisters);
         _mockConnectionService.Verify(c => c.GetConnectionByIdAsync(connectionId), Times.Once);
-        _mockRegisterService.Verify(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId), Times.Once);
+        _mockRegisterService.Verify(r => r.GetRegistersBySlaveIdAsync(testPort, slaveAddress.ToString()), Times.Once);
     }
 
     [Fact]
@@ -60,8 +77,17 @@ public class RegistersControllerTests
         var testPort = 502;
 
         var mockConnection = new Connection { Id = connectionId, Port = testPort };
+        var mockSlave = new Slave { Id = slaveId, Slaveid = 1 };
+        var mockConnectionWithSlaves = new ConnectionTree 
+        { 
+            Id = connectionId, 
+            Port = testPort,
+            Slaves = new List<Slave> { mockSlave }
+        };
+
         _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
-        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId))
+        _mockConnectionService.Setup(c => c.GetConnectionsTreeAsync()).ReturnsAsync(new List<ConnectionTree> { mockConnectionWithSlaves });
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, "1"))
             .ThrowsAsync(new KeyNotFoundException("Slave not found"));
 
         // Act
@@ -82,11 +108,28 @@ public class RegistersControllerTests
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
         var testPort = 502;
+        var slaveAddress = 1;
         var emptyRegisters = new List<Register>();
 
         var mockConnection = new Connection { Id = connectionId, Port = testPort };
+        
+        // Mock连接树，包含从机信息
+        var connectionTree = new List<ConnectionTree>
+        {
+            new ConnectionTree
+            {
+                Id = connectionId,
+                Port = testPort,
+                Slaves = new List<Slave>
+                {
+                    new Slave { Id = slaveId, Slaveid = slaveAddress, Name = "Test Slave" }
+                }
+            }
+        };
+        
         _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
-        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveId)).ReturnsAsync(emptyRegisters);
+        _mockConnectionService.Setup(c => c.GetConnectionsTreeAsync()).ReturnsAsync(connectionTree);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveAddress.ToString())).ReturnsAsync(emptyRegisters);
 
         // Act
         var result = await _controller.GetRegisters(connectionId, slaveId);
@@ -381,20 +424,40 @@ public class RegistersControllerTests
     {
         // Test OK (200)
         var testPort = 502;
-        var mockConnection = new Connection { Id = "conn", Port = testPort };
-        var registers = new List<Register> { new Register { Id = "id", Slaveid = "slave", Startaddr = 40001, Hexdata = "ABCD" } };
-        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync("conn")).ReturnsAsync(mockConnection);
-        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, "slave")).ReturnsAsync(registers);
+        var connectionId = "conn";
+        var slaveId = "slave";
+        var slaveAddress = 1;
+        var mockConnection = new Connection { Id = connectionId, Port = testPort };
+        var registers = new List<Register> { new Register { Id = "id", Slaveid = slaveId, Startaddr = 40001, Hexdata = "ABCD" } };
+        
+        // Mock连接树，包含从机信息
+        var connectionTree = new List<ConnectionTree>
+        {
+            new ConnectionTree
+            {
+                Id = connectionId,
+                Port = testPort,
+                Slaves = new List<Slave>
+                {
+                    new Slave { Id = slaveId, Slaveid = slaveAddress, Name = "Test Slave" }
+                }
+            }
+        };
+        
+        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
+        _mockConnectionService.Setup(c => c.GetConnectionsTreeAsync()).ReturnsAsync(connectionTree);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveAddress.ToString())).ReturnsAsync(registers);
 
-        var result = await _controller.GetRegisters("conn", "slave");
+        var result = await _controller.GetRegisters(connectionId, slaveId);
         var okResult = Assert.IsAssignableFrom<OkObjectResult>(result.Result);
         Assert.Equal(200, okResult.StatusCode);
 
         // Test NotFound (404)
-        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync("conn")).ReturnsAsync(mockConnection);
-        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, "slave"))
+        _mockConnectionService.Setup(c => c.GetConnectionByIdAsync(connectionId)).ReturnsAsync(mockConnection);
+        _mockConnectionService.Setup(c => c.GetConnectionsTreeAsync()).ReturnsAsync(connectionTree);
+        _mockRegisterService.Setup(r => r.GetRegistersBySlaveIdAsync(testPort, slaveAddress.ToString()))
             .ThrowsAsync(new KeyNotFoundException("Not found"));
-        var notFoundResult = await _controller.GetRegisters("conn", "slave");
+        var notFoundResult = await _controller.GetRegisters(connectionId, slaveId);
         var notFoundObjectResult = Assert.IsType<NotFoundObjectResult>(notFoundResult.Result);
         Assert.Equal(404, notFoundObjectResult.StatusCode);
     }

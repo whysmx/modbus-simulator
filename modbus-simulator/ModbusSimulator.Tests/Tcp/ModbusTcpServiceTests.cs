@@ -247,6 +247,78 @@ public class ModbusTcpServiceTests
     }
 
     [Fact]
+    public void ProcessRequestAsync_MultipleRegistersWithContinuousHexData_ReturnsCorrectResponse()
+    {
+        // Arrange - 这个测试验证修复的Bug：多个寄存器的16进制数据解析错误
+        var context = new ProtocolContext { LocalPort = 502 };
+        
+        // 模拟寄存器数据：地址40001，包含3个16位寄存器的连续数据
+        var registers = new List<Register>
+        {
+            new Register
+            {
+                Id = "1",
+                Slaveid = "1",
+                Startaddr = 40001, // 对应协议地址 0x0000
+                Hexdata = "12 34 56 78 12 34" // 6个字节 = 3个16位寄存器
+            }
+        };
+
+        _mockRegisterService.Setup(x => x.GetRegistersBySlaveIdAsync(502, "1"))
+            .ReturnsAsync(registers);
+
+        // Modbus TCP请求：01 03 00 00 00 0A C5 CD
+        // 功能码03，从地址0000开始读取0A(10)个寄存器
+        var request = new byte[] 
+        { 
+            0x00, 0x01, // Transaction ID
+            0x00, 0x00, // Protocol ID
+            0x00, 0x06, // Length
+            0x01,       // Unit ID (Slave ID)
+            0x03,       // Function Code (Read Holding Registers)
+            0x00, 0x00, // Starting Address (0x0000)
+            0x00, 0x0A  // Quantity (10 registers)
+        };
+
+        // Act
+        var response = _modbusService.ProcessRequestAsync(request, context).Result;
+
+        // Assert
+        Assert.NotEmpty(response);
+        
+        // 验证响应帧结构
+        Assert.Equal(0x00, response[0]); // Transaction ID high
+        Assert.Equal(0x01, response[1]); // Transaction ID low
+        Assert.Equal(0x00, response[2]); // Protocol ID high
+        Assert.Equal(0x00, response[3]); // Protocol ID low
+        Assert.Equal(0x00, response[4]); // Length high byte
+        Assert.Equal(0x17, response[5]); // Length low byte (23 = 1 unit + 1 func + 1 count + 20 data)
+        Assert.Equal(0x01, response[6]); // Unit ID
+        Assert.Equal(0x03, response[7]); // Function Code
+        Assert.Equal(0x14, response[8]); // Byte Count (20 bytes = 10 registers * 2 bytes)
+        
+        // 验证数据部分：前3个寄存器应该是正确的数据，后7个寄存器应该是0000
+        // 寄存器1: 0x1234
+        Assert.Equal(0x12, response[9]);  // 高字节
+        Assert.Equal(0x34, response[10]); // 低字节
+        
+        // 寄存器2: 0x5678  
+        Assert.Equal(0x56, response[11]); // 高字节
+        Assert.Equal(0x78, response[12]); // 低字节
+        
+        // 寄存器3: 0x1234
+        Assert.Equal(0x12, response[13]); // 高字节
+        Assert.Equal(0x34, response[14]); // 低字节
+        
+        // 寄存器4-10: 应该都是 0x0000
+        for (int i = 15; i < 29; i += 2)
+        {
+            Assert.Equal(0x00, response[i]);     // 高字节
+            Assert.Equal(0x00, response[i + 1]); // 低字节
+        }
+    }
+
+    [Fact]
     public async Task ProcessRequestAsync_EmptyRequest_ReturnsEmptyResponse()
     {
         // Arrange
