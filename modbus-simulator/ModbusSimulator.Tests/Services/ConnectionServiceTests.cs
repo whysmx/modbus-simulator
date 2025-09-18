@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.Data.Sqlite;
+using ModbusSimulator.Enums;
 using ModbusSimulator.Models;
 using ModbusSimulator.Repositories;
 using ModbusSimulator.Services;
@@ -50,12 +51,17 @@ public class ConnectionServiceTests
     public async Task CreateConnectionAsync_ValidRequest_ShouldCreateSuccessfully()
     {
         // Arrange
-        var request = new CreateConnectionRequest { Name = "Test Connection" };
+        var request = new CreateConnectionRequest
+        {
+            Name = "Test Connection",
+            ProtocolType = ModbusProtocolType.ModbusTcp
+        };
         var expectedConnection = new Connection
         {
             Id = "generated-id",
             Name = "Test Connection",
-            Port = 502
+            Port = 502,
+            ProtocolType = ModbusProtocolType.ModbusTcp
         };
 
         _mockRepository.Setup(r => r.CreateAsync(It.IsAny<Connection>()))
@@ -67,7 +73,9 @@ public class ConnectionServiceTests
         // Assert
         Assert.Equal(expectedConnection, result);
         _mockRepository.Verify(r => r.CreateAsync(It.Is<Connection>(c =>
-            c.Name == "Test Connection" && c.Port == 0)), Times.Once);
+            c.Name == "Test Connection"
+            && c.Port == 0
+            && c.ProtocolType == ModbusProtocolType.ModbusTcp)), Times.Once);
     }
 
     [Fact]
@@ -127,7 +135,8 @@ public class ConnectionServiceTests
 
         // Assert
         _mockRepository.Verify(r => r.CreateAsync(It.Is<Connection>(c =>
-            c.Name == "Test Connection")), Times.Once);
+            c.Name == "Test Connection"
+            && c.ProtocolType == request.ProtocolType)), Times.Once);
     }
 
     [Fact]
@@ -154,12 +163,18 @@ public class ConnectionServiceTests
     {
         // Arrange
         var id = "test-id";
-        var request = new UpdateConnectionRequest { Name = "Updated Connection", Port = 1502 };
+        var request = new UpdateConnectionRequest
+        {
+            Name = "Updated Connection",
+            Port = 1502,
+            ProtocolType = ModbusProtocolType.ModbusTcp
+        };
         var expectedConnection = new Connection
         {
             Id = id,
             Name = "Updated Connection",
-            Port = 1502
+            Port = 1502,
+            ProtocolType = ModbusProtocolType.ModbusTcp
         };
 
         _mockRepository.Setup(r => r.UpdateAsync(It.IsAny<Connection>()))
@@ -171,7 +186,10 @@ public class ConnectionServiceTests
         // Assert
         Assert.Equal(expectedConnection, result);
         _mockRepository.Verify(r => r.UpdateAsync(It.Is<Connection>(c =>
-            c.Id == id && c.Name == "Updated Connection" && c.Port == 1502)), Times.Once);
+            c.Id == id
+            && c.Name == "Updated Connection"
+            && c.Port == 1502
+            && c.ProtocolType == ModbusProtocolType.ModbusTcp)), Times.Once);
     }
 
     [Fact]
@@ -241,7 +259,8 @@ public class ConnectionServiceTests
 
         // Assert
         _mockRepository.Verify(r => r.UpdateAsync(It.Is<Connection>(c =>
-            c.Name == "Updated Name")), Times.Once);
+            c.Name == "Updated Name"
+            && c.ProtocolType == request.ProtocolType)), Times.Once);
     }
 
     [Fact]
