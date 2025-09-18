@@ -35,6 +35,7 @@ builder.Services.AddScoped<IConnectionRepository, ConnectionRepository>();
 builder.Services.AddScoped<ISlaveRepository, SlaveRepository>();
 builder.Services.AddScoped<IRegisterRepository, RegisterRepository>();
 
+builder.Services.AddScoped<ICacheService, CacheService>();
 builder.Services.AddScoped<IConnectionService, ConnectionService>();
 builder.Services.AddScoped<ISlaveService, SlaveService>();
 builder.Services.AddScoped<IRegisterService, RegisterService>();

@@ -11,12 +11,14 @@ namespace ModbusSimulator.Tests.Services;
 public class ConnectionServiceTests
 {
     private readonly Mock<IConnectionRepository> _mockRepository;
+    private readonly Mock<ICacheService> _mockCacheService;
     private readonly ConnectionService _service;
 
     public ConnectionServiceTests()
     {
         _mockRepository = new Mock<IConnectionRepository>();
-        _service = new ConnectionService(_mockRepository.Object);
+        _mockCacheService = new Mock<ICacheService>();
+        _service = new ConnectionService(_mockRepository.Object, _mockCacheService.Object);
     }
 
     #region GetConnectionsTreeAsync Tests

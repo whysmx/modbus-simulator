@@ -19,6 +19,11 @@ public class ConnectionRepositoryTests : IDisposable
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
 
+        // 启用外键约束
+        using var pragmaCommand = _connection.CreateCommand();
+        pragmaCommand.CommandText = "PRAGMA foreign_keys = ON;";
+        pragmaCommand.ExecuteNonQuery();
+
         // 初始化数据库表结构
         InitializeDatabase();
 

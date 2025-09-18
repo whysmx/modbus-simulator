@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ModbusSimulator.Controllers;
 using ModbusSimulator.Models;
-using ModbusSimulator.Repositories;
+using ModbusSimulator.Services;
 using Moq;
 using Xunit;
 
@@ -9,13 +9,13 @@ namespace ModbusSimulator.Tests.Controllers;
 
 public class SlavesControllerTests
 {
-    private readonly Mock<ISlaveRepository> _mockSlaveRepository;
+    private readonly Mock<ISlaveService> _mockSlaveService;
     private readonly SlavesController _controller;
 
     public SlavesControllerTests()
     {
-        _mockSlaveRepository = new Mock<ISlaveRepository>();
-        _controller = new SlavesController(_mockSlaveRepository.Object);
+        _mockSlaveService = new Mock<ISlaveService>();
+        _controller = new SlavesController(_mockSlaveService.Object);
     }
 
     #region CreateSlave Tests
@@ -34,7 +34,7 @@ public class SlavesControllerTests
             Slaveid = 1
         };
 
-        _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>())).ReturnsAsync(expectedSlave);
+        _mockSlaveService.Setup(s => s.CreateSlaveAsync(It.IsAny<string>(), It.IsAny<CreateSlaveRequest>())).ReturnsAsync(expectedSlave);
 
         // Act
         var result = await _controller.CreateSlave(connectionId, request);
@@ -44,8 +44,8 @@ public class SlavesControllerTests
         Assert.Equal(201, createdResult.StatusCode);
         Assert.Equal(expectedSlave, createdResult.Value);
 
-        _mockSlaveRepository.Verify(r => r.CreateAsync(It.Is<Slave>(s =>
-            s.Connid == connectionId && s.Name == "Test Slave" && s.Slaveid == 1)), Times.Once);
+        _mockSlaveService.Verify(s => s.CreateSlaveAsync(connectionId, It.Is<CreateSlaveRequest>(req =>
+            req.Name == "Test Slave" && req.Slaveid == 1)), Times.Once);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class SlavesControllerTests
         var connectionId = "test-connection-id";
         var request = new CreateSlaveRequest { Name = "Test Slave", Slaveid = 1 };
 
-        _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>()))
+        _mockSlaveService.Setup(s => s.CreateSlaveAsync(It.IsAny<string>(), It.IsAny<CreateSlaveRequest>()))
             .ThrowsAsync(new KeyNotFoundException("Connection not found"));
 
         // Act
@@ -76,7 +76,7 @@ public class SlavesControllerTests
         var connectionId = "test-connection-id";
         var request = new CreateSlaveRequest { Name = "Test Slave", Slaveid = 1 };
 
-        _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>()))
+        _mockSlaveService.Setup(s => s.CreateSlaveAsync(It.IsAny<string>(), It.IsAny<CreateSlaveRequest>()))
             .ThrowsAsync(new InvalidOperationException("Duplicate slave ID"));
 
         // Act
@@ -97,7 +97,7 @@ public class SlavesControllerTests
         var connectionId = "test-connection-id";
         var request = new CreateSlaveRequest { Name = "Test Slave", Slaveid = 1 };
 
-        _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>()))
+        _mockSlaveService.Setup(s => s.CreateSlaveAsync(It.IsAny<string>(), It.IsAny<CreateSlaveRequest>()))
             .ThrowsAsync(new Exception("Unexpected error"));
 
         // Act
@@ -130,7 +130,7 @@ public class SlavesControllerTests
             Slaveid = 2
         };
 
-        _mockSlaveRepository.Setup(r => r.UpdateAsync(It.IsAny<Slave>())).ReturnsAsync(expectedSlave);
+        _mockSlaveService.Setup(s => s.UpdateSlaveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateSlaveRequest>())).ReturnsAsync(expectedSlave);
 
         // Act
         var result = await _controller.UpdateSlave(connectionId, slaveId, request);
@@ -140,8 +140,8 @@ public class SlavesControllerTests
         Assert.Equal(200, okResult.StatusCode);
         Assert.Equal(expectedSlave, okResult.Value);
 
-        _mockSlaveRepository.Verify(r => r.UpdateAsync(It.Is<Slave>(s =>
-            s.Id == slaveId && s.Connid == connectionId && s.Name == "Updated Slave" && s.Slaveid == 2)), Times.Once);
+        _mockSlaveService.Verify(s => s.UpdateSlaveAsync(connectionId, slaveId, It.Is<UpdateSlaveRequest>(req =>
+            req.Name == "Updated Slave" && req.Slaveid == 2)), Times.Once);
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class SlavesControllerTests
         var slaveId = "test-slave-id";
         var request = new UpdateSlaveRequest { Name = "Updated Slave", Slaveid = 2 };
 
-        _mockSlaveRepository.Setup(r => r.UpdateAsync(It.IsAny<Slave>()))
+        _mockSlaveService.Setup(s => s.UpdateSlaveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateSlaveRequest>()))
             .ThrowsAsync(new KeyNotFoundException("Slave not found"));
 
         // Act
@@ -174,7 +174,7 @@ public class SlavesControllerTests
         var slaveId = "test-slave-id";
         var request = new UpdateSlaveRequest { Name = "Updated Slave", Slaveid = 2 };
 
-        _mockSlaveRepository.Setup(r => r.UpdateAsync(It.IsAny<Slave>()))
+        _mockSlaveService.Setup(s => s.UpdateSlaveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateSlaveRequest>()))
             .ThrowsAsync(new InvalidOperationException("Duplicate slave ID"));
 
         // Act
@@ -199,14 +199,14 @@ public class SlavesControllerTests
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
 
-        _mockSlaveRepository.Setup(r => r.DeleteAsync(slaveId)).Returns(Task.CompletedTask);
+        _mockSlaveService.Setup(s => s.DeleteSlaveAsync(connectionId, slaveId)).Returns(Task.CompletedTask);
 
         // Act
         var result = await _controller.DeleteSlave(connectionId, slaveId);
 
         // Assert
         Assert.IsType<NoContentResult>(result);
-        _mockSlaveRepository.Verify(r => r.DeleteAsync(slaveId), Times.Once);
+        _mockSlaveService.Verify(s => s.DeleteSlaveAsync(connectionId, slaveId), Times.Once);
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public class SlavesControllerTests
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
 
-        _mockSlaveRepository.Setup(r => r.DeleteAsync(slaveId))
+        _mockSlaveService.Setup(s => s.DeleteSlaveAsync(connectionId, slaveId))
             .ThrowsAsync(new KeyNotFoundException("Slave not found"));
 
         // Act
@@ -242,7 +242,7 @@ public class SlavesControllerTests
 
         // Act & Assert - This would typically be handled by ASP.NET Core model validation
         // but we test the repository call behavior
-        _mockSlaveRepository.Setup(r => r.CreateAsync(It.IsAny<Slave>()))
+        _mockSlaveService.Setup(s => s.CreateSlaveAsync(It.IsAny<string>(), It.IsAny<CreateSlaveRequest>()))
             .ReturnsAsync(new Slave { Id = "test-id", Connid = connectionId, Name = null, Slaveid = 0 });
 
         var result = await _controller.CreateSlave(connectionId, null);
@@ -259,7 +259,7 @@ public class SlavesControllerTests
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
 
-        _mockSlaveRepository.Setup(r => r.UpdateAsync(It.IsAny<Slave>()))
+        _mockSlaveService.Setup(s => s.UpdateSlaveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<UpdateSlaveRequest>()))
             .ReturnsAsync(new Slave { Id = slaveId, Connid = connectionId, Name = null, Slaveid = 0 });
 
         // Act
@@ -290,7 +290,7 @@ public class SlavesControllerTests
             Slaveid = 1
         };
 
-        _mockSlaveRepository.Setup(r => r.CreateAsync(It.Is<Slave>(s => s.Connid == connectionId)))
+        _mockSlaveService.Setup(s => s.CreateSlaveAsync(It.Is<string>(cid => cid == connectionId), It.IsAny<CreateSlaveRequest>()))
             .ReturnsAsync(expectedSlave);
 
         // Act

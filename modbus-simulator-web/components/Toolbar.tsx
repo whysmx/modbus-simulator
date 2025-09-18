@@ -1,33 +1,18 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Plus, Save } from "lucide-react"
+import { Save } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface ToolbarProps {
-  onNewConnection: () => void
   onSaveChanges?: () => void
   hasUnsavedChanges?: boolean
 }
 
-export function Toolbar({ onNewConnection, onSaveChanges, hasUnsavedChanges = false }: ToolbarProps) {
+export function Toolbar({ onSaveChanges, hasUnsavedChanges = false }: ToolbarProps) {
   return (
     <TooltipProvider>
-      <div className="flex items-center justify-between gap-2 p-4 border-b bg-card">
-        <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={onNewConnection}>
-                <Plus className="w-4 h-4 mr-2" />
-                新建连接
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>创建新的Modbus连接</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-
+      <div className="flex items-center justify-end gap-2 p-4 border-b bg-card">
         <div className="flex items-center gap-2">
           {hasUnsavedChanges && (
             <Tooltip>

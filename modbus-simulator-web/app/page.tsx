@@ -37,7 +37,6 @@ function HomeContent() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <Toolbar
-        onNewConnection={() => setEditingDevice("new-connection")}
         onSaveChanges={saveChanges}
         hasUnsavedChanges={hasUnsavedChanges}
       />

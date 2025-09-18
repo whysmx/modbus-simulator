@@ -13,6 +13,7 @@ import type { Register } from "@/types"
 import { Trash2, X, Check } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface RegisterConfigDialogProps {
   open: boolean
@@ -31,7 +32,7 @@ export function RegisterConfigDialog({
   editMode = false,
   existingGroup,
 }: RegisterConfigDialogProps) {
-  const { addRegister, updateRegister, deleteRegister } = useConnections()
+  const { addRegister, updateRegister, deleteRegister, getAllRegisters } = useConnections()
   const [selectedType, setSelectedType] = useState<string>("")
   const [offsetAddress, setOffsetAddress] = useState<number>(1)
   const [offsetHex, setOffsetHex] = useState<string>("1")
@@ -40,6 +41,7 @@ export function RegisterConfigDialog({
   const [coefficients, setCoefficients] = useState<string>("")
   const [hexError, setHexError] = useState<string | null>(null)
   const [offsetError, setOffsetError] = useState<string | null>(null)
+  const [addressDuplicateError, setAddressDuplicateError] = useState<string | null>(null)
 
   // 寄存器类型定义
   const registerTypes = [
@@ -99,6 +101,29 @@ export function RegisterConfigDialog({
     // 检查长度是否为偶数
     if (cleaned.length % 2 !== 0) {
       return "16进制数据长度必须为偶数"
+    }
+    
+    return null
+  }
+
+  // 验证地址是否重复
+  const validateAddressDuplicate = (finalAddress: number): string | null => {
+    if (!connectionId || !slaveId) return null
+    
+    // 获取当前从机的所有寄存器
+    const existingRegisters = getAllRegisters(connectionId, slaveId)
+    
+    // 检查是否有重复的起始地址
+    const duplicateRegister = existingRegisters.find(register => {
+      // 如果是编辑模式，跳过当前正在编辑的寄存器
+      if (editMode && existingGroup && register.id === existingGroup.id) {
+        return false
+      }
+      return register.startaddr === finalAddress
+    })
+    
+    if (duplicateRegister) {
+      return `起始地址 ${finalAddress} 已被其他寄存器组使用`
     }
     
     return null
@@ -190,6 +215,15 @@ export function RegisterConfigDialog({
     setOffsetHex(decToHex(value))
     const error = validateOffsetAddress(value)
     setOffsetError(error)
+    
+    // 检查地址重复
+    if (!error && selectedType) {
+      const finalAddress = calculateFinalAddress(selectedType, value)
+      const duplicateError = validateAddressDuplicate(finalAddress)
+      setAddressDuplicateError(duplicateError)
+    } else {
+      setAddressDuplicateError(null)
+    }
   }
 
   // 处理16进制地址输入
@@ -202,8 +236,18 @@ export function RegisterConfigDialog({
       setOffsetAddress(decValue)
       const decError = validateOffsetAddress(decValue)
       setOffsetError(decError)
+      
+      // 检查地址重复
+      if (!decError && selectedType) {
+        const finalAddress = calculateFinalAddress(selectedType, decValue)
+        const duplicateError = validateAddressDuplicate(finalAddress)
+        setAddressDuplicateError(duplicateError)
+      } else {
+        setAddressDuplicateError(null)
+      }
     } else {
       setOffsetError(hexError)
+      setAddressDuplicateError(null)
     }
   }
 
@@ -232,6 +276,7 @@ export function RegisterConfigDialog({
       // 清除所有错误状态
       setHexError(null)
       setOffsetError(null)
+      setAddressDuplicateError(null)
     }
   }, [open, editMode, existingGroup])
 
@@ -263,6 +308,13 @@ export function RegisterConfigDialog({
     // 计算最终地址
     const finalAddress = calculateFinalAddress(selectedType, offsetAddress)
 
+    // 验证地址重复
+    const duplicateValidationError = validateAddressDuplicate(finalAddress)
+    if (duplicateValidationError) {
+      setAddressDuplicateError(duplicateValidationError)
+      return
+    }
+
     if (editMode && existingGroup) {
       updateRegister(connectionId, slaveId, existingGroup.id, {
         startaddr: finalAddress,
@@ -284,8 +336,10 @@ export function RegisterConfigDialog({
 
   const handleDelete = () => {
     if (connectionId && slaveId && existingGroup) {
-      deleteRegister(connectionId, slaveId, existingGroup.id)
-      onOpenChange(false)
+      if (confirm('确定要删除这个寄存器组吗？此操作无法撤销。')) {
+        deleteRegister(connectionId, slaveId, existingGroup.id)
+        onOpenChange(false)
+      }
     }
   }
 
@@ -293,7 +347,7 @@ export function RegisterConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{editMode ? "编辑寄存器组" : "配置寄存器组"}</DialogTitle>
+          <DialogTitle>{editMode ? "编辑寄存器" : "新增寄存器"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -308,7 +362,13 @@ export function RegisterConfigDialog({
                       ? "border-blue-500 bg-blue-50 shadow-md"
                       : "border-gray-200 hover:border-gray-300 hover:shadow-sm"
                   }`}
-                  onClick={() => setSelectedType(type.id)}
+                  onClick={() => {
+                    setSelectedType(type.id)
+                    // 寄存器类型变化时重新检查地址重复
+                    const finalAddress = calculateFinalAddress(type.id, offsetAddress)
+                    const duplicateError = validateAddressDuplicate(finalAddress)
+                    setAddressDuplicateError(duplicateError)
+                  }}
                 >
                   <CardContent className="p-2 h-full">
                     <div className="flex flex-col justify-between h-full">
@@ -364,7 +424,7 @@ export function RegisterConfigDialog({
                     onChange={(e) => handleDecAddressChange(Number.parseInt(e.target.value) || 0)}
                     min={0}
                     max={9998}
-                    className={`pl-36 ${offsetError ? "border-red-500" : ""}`}
+                    className={`pl-36 ${offsetError || addressDuplicateError ? "border-red-500" : ""}`}
                     required
                   />
                 </div>
@@ -378,7 +438,7 @@ export function RegisterConfigDialog({
                     type="text"
                     value={offsetHex}
                     onChange={(e) => handleHexAddressChange(e.target.value)}
-                    className={`pl-36 ${offsetError ? "border-red-500" : ""}`}
+                    className={`pl-36 ${offsetError || addressDuplicateError ? "border-red-500" : ""}`}
                     required
                   />
                 </div>
@@ -388,6 +448,12 @@ export function RegisterConfigDialog({
               <p className="text-sm text-red-500 flex items-center gap-1">
                 <X className="w-4 h-4" />
                 {offsetError}
+              </p>
+            )}
+            {addressDuplicateError && (
+              <p className="text-sm text-red-500 flex items-center gap-1">
+                <X className="w-4 h-4" />
+                {addressDuplicateError}
               </p>
             )}
           </div>
@@ -449,18 +515,41 @@ export function RegisterConfigDialog({
           </div>
 
           <DialogFooter className="flex justify-between">
-            {editMode && (
-              <Button type="button" variant="destructive" size="icon" onClick={handleDelete}>
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            )}
+            <div className="flex-1">
+              {editMode && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button type="button" variant="destructive" size="icon" onClick={handleDelete}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>删除</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" size="icon" onClick={() => onOpenChange(false)}>
-                <X className="w-4 h-4" />
-              </Button>
-              <Button type="submit" size="icon" disabled={!selectedType || !!hexError || !!offsetError}>
-                <Check className="w-4 h-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="outline" size="icon" onClick={() => onOpenChange(false)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>取消</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="submit" size="icon" disabled={!selectedType || !!hexError || !!offsetError || !!addressDuplicateError}>
+                    <Check className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{editMode ? "保存" : "新增"}</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </DialogFooter>
         </form>

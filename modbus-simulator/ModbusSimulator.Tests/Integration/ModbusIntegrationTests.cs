@@ -5,6 +5,7 @@ using ModbusSimulator.Models;
 using ModbusSimulator.Repositories;
 using ModbusSimulator.Services;
 using Xunit;
+using Dapper;
 
 namespace ModbusSimulator.Tests.Integration;
 
@@ -24,6 +25,12 @@ public class ModbusIntegrationTests : IDisposable
         // 创建内存数据库用于测试
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
+        
+        // 启用外键约束
+        using var pragmaCommand = _connection.CreateCommand();
+        pragmaCommand.CommandText = "PRAGMA foreign_keys = ON;";
+        pragmaCommand.ExecuteNonQuery();
+        
         InitializeDatabase();
 
         // 初始化Repository层
@@ -34,10 +41,13 @@ public class ModbusIntegrationTests : IDisposable
         // 创建内存缓存实例
         _memoryCache = new MemoryCache(new MemoryCacheOptions());
 
+        // 创建缓存服务
+        var cacheService = new CacheService(_connectionRepository, _memoryCache);
+
         // 初始化Service层
-        _connectionService = new ConnectionService(_connectionRepository);
-        _slaveService = new SlaveService(_slaveRepository, _connectionRepository);
-        _registerService = new RegisterService(_registerRepository, _connectionRepository, _slaveRepository, _memoryCache);
+        _connectionService = new ConnectionService(_connectionRepository, cacheService);
+        _slaveService = new SlaveService(_slaveRepository, _connectionRepository, cacheService);
+        _registerService = new RegisterService(_registerRepository, _connectionRepository, _slaveRepository, _memoryCache, cacheService);
     }
 
     private void InitializeDatabase()
@@ -488,9 +498,10 @@ public class ModbusIntegrationTests : IDisposable
         Assert.Equal(4, originalRegisters.Count());
 
         // 3. 模拟"重启" - 创建新的服务实例（但使用相同数据库）
-        var newConnectionService = new ConnectionService(_connectionRepository);
-        var newSlaveService = new SlaveService(_slaveRepository, _connectionRepository);
-        var newRegisterService = new RegisterService(_registerRepository, _connectionRepository, _slaveRepository, _memoryCache);
+        var newCacheService = new CacheService(_connectionRepository, _memoryCache);
+        var newConnectionService = new ConnectionService(_connectionRepository, newCacheService);
+        var newSlaveService = new SlaveService(_slaveRepository, _connectionRepository, newCacheService);
+        var newRegisterService = new RegisterService(_registerRepository, _connectionRepository, _slaveRepository, _memoryCache, newCacheService);
 
         // 4. 验证配置仍然存在
         var persistedRegisters = await newRegisterService.GetRegistersBySlaveIdAsync(connection.Port, slave.Slaveid.ToString());
@@ -566,6 +577,157 @@ public class ModbusIntegrationTests : IDisposable
         {
             Assert.True(sortedAddresses[i] < sortedAddresses[i + 1]);
         }
+    }
+
+    #endregion
+    
+    #region 外键约束和级联删除验证测试
+
+    [Fact]
+    public async Task DatabaseCascadeDelete_DeleteConnection_ShouldDeleteAllRelatedData()
+    {
+        // 1. 创建完整的数据结构
+        var connection = await _connectionService.CreateConnectionAsync(
+            new CreateConnectionRequest { Name = "Cascade Test Connection" });
+        var slave1 = await _slaveService.CreateSlaveAsync(connection.Id,
+            new CreateSlaveRequest { Name = "Slave 1", Slaveid = 1 });
+        var slave2 = await _slaveService.CreateSlaveAsync(connection.Id,
+            new CreateSlaveRequest { Name = "Slave 2", Slaveid = 2 });
+
+        // 创建多个寄存器
+        await _registerService.CreateRegisterAsync(connection.Id, slave1.Id,
+            new CreateRegisterRequest { Startaddr = 1, Hexdata = "AAAA" });
+        await _registerService.CreateRegisterAsync(connection.Id, slave1.Id,
+            new CreateRegisterRequest { Startaddr = 40001, Hexdata = "BBBBCCCC" });
+        await _registerService.CreateRegisterAsync(connection.Id, slave2.Id,
+            new CreateRegisterRequest { Startaddr = 1, Hexdata = "DDDD" });
+
+        // 2. 验证数据已创建
+        var connectionsBefore = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM connections WHERE id = @Id", new { Id = connection.Id });
+        var slavesBefore = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM slaves WHERE connid = @ConnId", new { ConnId = connection.Id });
+        var registersBefore = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM registers WHERE slaveid IN (@Slave1Id, @Slave2Id)", new { Slave1Id = slave1.Id, Slave2Id = slave2.Id });
+
+        Assert.Equal(1, connectionsBefore.First().Count);
+        Assert.Equal(2, slavesBefore.First().Count);
+        Assert.Equal(3, registersBefore.First().Count);
+
+        // 3. 删除连接
+        await _connectionService.DeleteConnectionAsync(connection.Id);
+
+        // 4. 直接查询数据库验证级联删除
+        var connectionsAfter = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM connections WHERE id = @Id", new { Id = connection.Id });
+        var slavesAfter = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM slaves WHERE connid = @ConnId", new { ConnId = connection.Id });
+        var registersAfter = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM registers WHERE slaveid IN (@Slave1Id, @Slave2Id)", new { Slave1Id = slave1.Id, Slave2Id = slave2.Id });
+
+        // 验证所有相关数据都被删除
+        Assert.Equal(0, connectionsAfter.First().Count);
+        Assert.Equal(0, slavesAfter.First().Count);
+        Assert.Equal(0, registersAfter.First().Count);
+
+        // 5. 验证缓存也被清理（通过应用层查询）
+        var cachedRegisters1 = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave1.Slaveid.ToString());
+        var cachedRegisters2 = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave2.Slaveid.ToString());
+        
+        Assert.Empty(cachedRegisters1);
+        Assert.Empty(cachedRegisters2);
+    }
+
+    [Fact]
+    public async Task DatabaseCascadeDelete_DeleteSlave_ShouldDeleteAllRelatedRegisters()
+    {
+        // 1. 创建测试数据
+        var connection = await _connectionService.CreateConnectionAsync(
+            new CreateConnectionRequest { Name = "Slave Cascade Test" });
+        var slave1 = await _slaveService.CreateSlaveAsync(connection.Id,
+            new CreateSlaveRequest { Name = "Slave 1", Slaveid = 1 });
+        var slave2 = await _slaveService.CreateSlaveAsync(connection.Id,
+            new CreateSlaveRequest { Name = "Slave 2", Slaveid = 2 });
+
+        // 为两个从机创建寄存器
+        await _registerService.CreateRegisterAsync(connection.Id, slave1.Id,
+            new CreateRegisterRequest { Startaddr = 1, Hexdata = "AAAA" });
+        await _registerService.CreateRegisterAsync(connection.Id, slave1.Id,
+            new CreateRegisterRequest { Startaddr = 40001, Hexdata = "BBBBCCCC" });
+        await _registerService.CreateRegisterAsync(connection.Id, slave2.Id,
+            new CreateRegisterRequest { Startaddr = 1, Hexdata = "DDDD" });
+
+        // 2. 验证数据已创建
+        var slave1RegistersBefore = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM registers WHERE slaveid = @SlaveId", new { SlaveId = slave1.Id });
+        var slave2RegistersBefore = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM registers WHERE slaveid = @SlaveId", new { SlaveId = slave2.Id });
+
+        Assert.Equal(2, slave1RegistersBefore.First().Count);
+        Assert.Equal(1, slave2RegistersBefore.First().Count);
+
+        // 3. 删除 slave1
+        await _slaveService.DeleteSlaveAsync(connection.Id, slave1.Id);
+
+        // 4. 直接查询数据库验证级联删除
+        var slave1Exists = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM slaves WHERE id = @Id", new { Id = slave1.Id });
+        var slave1RegistersAfter = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM registers WHERE slaveid = @SlaveId", new { SlaveId = slave1.Id });
+        var slave2RegistersAfter = await _connection.QueryAsync("SELECT COUNT(*) as Count FROM registers WHERE slaveid = @SlaveId", new { SlaveId = slave2.Id });
+
+        // 验证 slave1 和其寄存器都被删除，但 slave2 的寄存器保持不变
+        Assert.Equal(0, slave1Exists.First().Count);
+        Assert.Equal(0, slave1RegistersAfter.First().Count);
+        Assert.Equal(1, slave2RegistersAfter.First().Count); // slave2 的寄存器应该保持不变
+
+        // 5. 验证缓存被正确清理
+        var cachedRegisters1 = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave1.Slaveid.ToString());
+        var cachedRegisters2 = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, slave2.Slaveid.ToString());
+        
+        Assert.Empty(cachedRegisters1); // slave1 的寄存器缓存应该为空
+        Assert.Single(cachedRegisters2); // slave2 的寄存器应该正常返回
+    }
+
+    #endregion
+    
+    #region 缓存清除验证测试
+
+    [Fact]
+    public async Task DeleteSlave_ThenAddSameSlaveid_ShouldNotReturnOldRegisters()
+    {
+        // 1. 创建基础数据
+        var connection = await _connectionService.CreateConnectionAsync(
+            new CreateConnectionRequest { Name = "Cache Test Connection" });
+        var slave = await _slaveService.CreateSlaveAsync(connection.Id,
+            new CreateSlaveRequest { Name = "Test Slave", Slaveid = 1 });
+
+        // 2. 为从机添加寄存器
+        var register1 = await _registerService.CreateRegisterAsync(connection.Id, slave.Id,
+            new CreateRegisterRequest { Startaddr = 40001, Hexdata = "AAAA" });
+        var register2 = await _registerService.CreateRegisterAsync(connection.Id, slave.Id,
+            new CreateRegisterRequest { Startaddr = 40002, Hexdata = "BBBB" });
+
+        // 3. 查询寄存器，确保数据存在并缓存
+        var registersBeforeDelete = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, "1");
+        Assert.Equal(2, registersBeforeDelete.Count());
+
+        // 4. 删除从机
+        await _slaveService.DeleteSlaveAsync(connection.Id, slave.Id);
+
+        // 5. 立即创建相同slaveid的新从机
+        var newSlave = await _slaveService.CreateSlaveAsync(connection.Id,
+            new CreateSlaveRequest { Name = "New Test Slave", Slaveid = 1 });
+
+        // 6. 查询新从机的寄存器，应该为空（不能返回旧缓存数据）
+        var registersAfterRecreate = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, "1");
+        Assert.Empty(registersAfterRecreate);
+
+        // 7. 为新从机添加不同的寄存器
+        var newRegister = await _registerService.CreateRegisterAsync(connection.Id, newSlave.Id,
+            new CreateRegisterRequest { Startaddr = 40003, Hexdata = "CCCC" });
+
+        // 8. 再次查询，应该只返回新寄存器
+        var finalRegisters = await _registerService.GetRegistersBySlaveIdAsync(connection.Port, "1");
+        Assert.Single(finalRegisters);
+        var returnedRegister = finalRegisters.First();
+        Assert.Equal(40003, returnedRegister.Startaddr);
+        Assert.Equal("CCCC", returnedRegister.Hexdata);
+        Assert.Equal(newSlave.Id, returnedRegister.Slaveid);
+        
+        // 9. 确保旧寄存器数据不存在
+        Assert.DoesNotContain(finalRegisters, r => r.Hexdata == "AAAA");
+        Assert.DoesNotContain(finalRegisters, r => r.Hexdata == "BBBB");
     }
 
     #endregion

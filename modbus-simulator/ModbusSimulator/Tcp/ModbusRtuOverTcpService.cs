@@ -194,7 +194,7 @@ public class ModbusRtuOverTcpService : IProtocolHandler
                 Console.WriteLine($"查找逻辑地址: {logicalAddress} (基础{logicalBaseAddress} + 协议{protocolAddress} + 偏移{i})");
                 
                 // 修复：查找包含目标地址的寄存器记录，而不是精确匹配地址
-                Register foundRegister = null;
+                Register? foundRegister = null;
                 int registerOffsetInData = 0;
                 
                 foreach (var reg in registers)

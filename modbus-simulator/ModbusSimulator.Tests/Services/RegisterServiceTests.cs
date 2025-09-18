@@ -12,6 +12,7 @@ public class RegisterServiceTests : IDisposable
     private readonly Mock<IRegisterRepository> _mockRegisterRepository;
     private readonly Mock<IConnectionRepository> _mockConnectionRepository;
     private readonly Mock<ISlaveRepository> _mockSlaveRepository;
+    private readonly Mock<ICacheService> _mockCacheService;
     private readonly IMemoryCache _cache;
     private readonly RegisterService _service;
 
@@ -20,6 +21,7 @@ public class RegisterServiceTests : IDisposable
         _mockRegisterRepository = new Mock<IRegisterRepository>();
         _mockConnectionRepository = new Mock<IConnectionRepository>();
         _mockSlaveRepository = new Mock<ISlaveRepository>();
+        _mockCacheService = new Mock<ICacheService>();
         
         // 使用真实的 MemoryCache 而不是 Mock
         _cache = new MemoryCache(new MemoryCacheOptions());
@@ -28,7 +30,8 @@ public class RegisterServiceTests : IDisposable
             _mockRegisterRepository.Object,
             _mockConnectionRepository.Object,
             _mockSlaveRepository.Object,
-            _cache);
+            _cache,
+            _mockCacheService.Object);
     }
 
     public void Dispose()

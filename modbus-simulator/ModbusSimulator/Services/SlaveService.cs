@@ -7,11 +7,13 @@ public class SlaveService : ISlaveService
 {
     private readonly ISlaveRepository _slaveRepository;
     private readonly IConnectionRepository _connectionRepository;
+    private readonly ICacheService _cacheService;
 
-    public SlaveService(ISlaveRepository slaveRepository, IConnectionRepository connectionRepository)
+    public SlaveService(ISlaveRepository slaveRepository, IConnectionRepository connectionRepository, ICacheService cacheService)
     {
         _slaveRepository = slaveRepository;
         _connectionRepository = connectionRepository;
+        _cacheService = cacheService;
     }
 
     public async Task<Slave> CreateSlaveAsync(string connectionId, CreateSlaveRequest request)
@@ -55,7 +57,10 @@ public class SlaveService : ISlaveService
 
         try
         {
-            return await _slaveRepository.CreateAsync(slave);
+            var created = await _slaveRepository.CreateAsync(slave);
+            // 创建后也清理该地址对应的缓存，避免历史残留
+            _cacheService.ClearSlaveCache(connection.Port, request.Slaveid);
+            return created;
         }
         catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.Message.Contains("UNIQUE constraint failed"))
         {
@@ -125,7 +130,26 @@ public class SlaveService : ISlaveService
 
         try
         {
-            return await _slaveRepository.UpdateAsync(slave);
+            var updated = await _slaveRepository.UpdateAsync(slave);
+            // 更新后清理缓存：旧地址与新地址都清一下（地址可能更改）
+            try
+            {
+                var allConnections = await _connectionRepository.GetConnectionsTreeAsync();
+                var conn = allConnections.FirstOrDefault(c => c.Id == connectionId);
+                if (conn != null)
+                {
+                    // 清旧地址缓存
+                    var old = conn.Slaves.FirstOrDefault(s => s.Id == slaveId);
+                    if (old != null)
+                    {
+                        _cacheService.ClearSlaveCache(conn.Port, old.Slaveid);
+                    }
+                    // 清新地址缓存
+                    _cacheService.ClearSlaveCache(conn.Port, request.Slaveid);
+                }
+            }
+            catch { }
+            return updated;
         }
         catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.Message.Contains("UNIQUE constraint failed"))
         {
@@ -169,6 +193,9 @@ public class SlaveService : ISlaveService
             throw new KeyNotFoundException("从机不存在");
         }
 
+        // 先清除相关的寄存器缓存（在删除数据库记录之前）
+        _cacheService.ClearSlaveCache(connection.Port, existingSlave.Slaveid);
+        
         await _slaveRepository.DeleteAsync(slaveId);
     }
 }

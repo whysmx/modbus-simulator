@@ -10,13 +10,15 @@ public class SlaveServiceTests
 {
     private readonly Mock<ISlaveRepository> _mockSlaveRepository;
     private readonly Mock<IConnectionRepository> _mockConnectionRepository;
+    private readonly Mock<ICacheService> _mockCacheService;
     private readonly SlaveService _service;
 
     public SlaveServiceTests()
     {
         _mockSlaveRepository = new Mock<ISlaveRepository>();
         _mockConnectionRepository = new Mock<IConnectionRepository>();
-        _service = new SlaveService(_mockSlaveRepository.Object, _mockConnectionRepository.Object);
+        _mockCacheService = new Mock<ICacheService>();
+        _service = new SlaveService(_mockSlaveRepository.Object, _mockConnectionRepository.Object, _mockCacheService.Object);
     }
 
     #region CreateSlaveAsync Tests

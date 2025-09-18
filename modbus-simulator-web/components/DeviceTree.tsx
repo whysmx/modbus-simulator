@@ -2,12 +2,13 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Cable, Cpu, MemoryStick, ChevronDown, ChevronRight, MoreVertical, Loader2 } from "lucide-react"
+import { Globe, Monitor, HardDrive, ChevronDown, ChevronRight, Loader2, Search, X, Plus, Settings } from "lucide-react"
 import { useConnections } from "@/hooks/useConnections"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useState, useMemo, useCallback } from "react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"
+import { SearchHighlight } from "@/components/SearchHighlight"
 
 interface DeviceTreeProps {
   editingDevice: string | null
@@ -52,6 +53,7 @@ export function DeviceTree({
     openRegisterTab,
     classifyRegisterType,
     getRegistersByType,
+    getAllRegisters,
     loadRegistersForSlave,
     isSlaveLoading,
     isSlaveLoaded,
@@ -64,6 +66,45 @@ export function DeviceTree({
 
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set())
   const [expandedSlaves, setExpandedSlaves] = useState<Set<string>>(new Set())
+  const [searchTerm, setSearchTerm] = useState<string>("")
+
+  // 搜索匹配函数
+  const matchesSearch = useCallback((text: string, searchTerm: string): boolean => {
+    if (!searchTerm.trim()) return true
+    return text.toLowerCase().includes(searchTerm.toLowerCase().trim())
+  }, [])
+
+  // 过滤连接和从机
+  const filteredConnections = useMemo(() => {
+    if (!searchTerm.trim()) return connections
+    
+    return connections.filter(connection => {
+      // 检查连接名称和端口号是否匹配
+      const connectionMatches = 
+        matchesSearch(connection.name, searchTerm) ||
+        matchesSearch(connection.port.toString(), searchTerm)
+      
+      // 检查从机是否匹配
+      const slaveMatches = connection.slaves.some(slave => 
+        matchesSearch(slave.name, searchTerm) ||
+        matchesSearch(slave.slaveid.toString(), searchTerm)
+      )
+      
+      return connectionMatches || slaveMatches
+    })
+  }, [connections, searchTerm, matchesSearch])
+
+  // 为有匹配的连接过滤从机
+  const getFilteredSlaves = useCallback((connection: any) => {
+    if (!searchTerm.trim()) return connection.slaves
+    
+    return connection.slaves.filter(slave => 
+      matchesSearch(slave.name, searchTerm) ||
+      matchesSearch(slave.slaveid.toString(), searchTerm) ||
+      matchesSearch(connection.name, searchTerm) ||
+      matchesSearch(connection.port.toString(), searchTerm)
+    )
+  }, [searchTerm, matchesSearch])
 
   const toggleConnectionExpansion = (connectionId: string) => {
     const newExpanded = new Set(expandedConnections)
@@ -108,7 +149,7 @@ export function DeviceTree({
               <Tooltip key={connection.id}>
                 <TooltipTrigger asChild>
                   <div className="flex flex-col items-center gap-1 p-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
-                    <Cable className="w-5 h-5 text-blue-600" />
+                    <Globe className="w-5 h-5 text-blue-600" />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right">
@@ -128,295 +169,399 @@ export function DeviceTree({
   return (
     <TooltipProvider>
       <Card className="h-full">
+        {/* 搜索输入框 */}
+        <div className="p-3 border-b">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="搜索连接、从机、端口..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-10"
+            />
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                onClick={() => setSearchTerm("")}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+        </div>
         <div className="p-2 space-y-1">
-          {connections.length === 0 && (
+          {filteredConnections.length === 0 && searchTerm && (
             <div className="p-4 text-center text-muted-foreground">
-              <p>正在加载连接数据...</p>
-              <p className="text-xs mt-1">如果持续显示此消息，请检查控制台日志</p>
+              <p>未找到匹配的设备</p>
+              <p className="text-xs mt-1">请尝试修改搜索关键词</p>
             </div>
           )}
-          {connections.map((connection) => (
-            <div key={connection.id}>
-              {/* Level 1: Connection */}
-              <div
-                className={cn(
-                  "flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors",
-                  selectedConnectionId === connection.id && "bg-accent",
-                )}
-                onClick={() => {
-                  selectConnection(connection.id)
-                  toggleConnectionExpansion(connection.id)
-                }}
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-4 w-4 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation()
+          {connections.length === 0 && !searchTerm ? (
+            /* 无连接时显示新增按钮 */
+            <div className="p-2 flex justify-end">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                    onClick={() => setEditingDevice("new-connection")}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>新建连接</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          ) : (
+            /* 有连接时显示连接列表 */
+            filteredConnections.map((connection) => {
+            const filteredSlaves = getFilteredSlaves(connection)
+            
+            return (
+              <div key={connection.id}>
+                {/* Level 1: Connection */}
+                <div
+                  className={cn(
+                    "group flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors",
+                    selectedConnectionId === connection.id && "bg-accent",
+                  )}
+                  onClick={() => {
+                    selectConnection(connection.id)
                     toggleConnectionExpansion(connection.id)
                   }}
                 >
-                  {expandedConnections.has(connection.id) ? (
-                    <ChevronDown className="w-3 h-3" />
-                  ) : (
-                    <ChevronRight className="w-3 h-3" />
-                  )}
-                </Button>
-                <Cable className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">{connection.name}</div>
-                  <div className="text-xs text-muted-foreground">端口: {connection.port}</div>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 flex-shrink-0"
-                      aria-haspopup="menu"
-                      aria-label="连接操作"
-                      data-testid={`connection-actions-${connection.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreVertical className="w-3 h-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setEditingSlave({ connectionId: connection.id, slaveId: null })}>
-                      新增从机
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setEditingDevice(connection.id)}>编辑连接</DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        if (confirm("确定要删除此连接吗？")) {
-                          deleteConnection(connection.id)
-                        }
-                      }}
-                      className="text-red-600"
-                    >
-                      删除连接
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Level 2: Slaves (only show if connection is expanded) */}
-              {expandedConnections.has(connection.id) &&
-                connection.slaves.map((slave) => {
-                  const slaveKey = `${connection.id}-${slave.id}`
-                  return (
-                    <div key={slaveKey} className="ml-6">
-                      <div
-                        className={cn(
-                          "flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors",
-                          selectedSlaveId === slave.id && "bg-accent",
-                        )}
-                        onClick={async () => {
-                          selectSlave(slave.id)
-                          await toggleSlave(slaveKey, connection.id, slave.id)
-                        }}
-                      >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 hover:bg-accent/50 transition-all duration-150"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleConnectionExpansion(connection.id)
+                    }}
+                  >
+                    {expandedConnections.has(connection.id) ? (
+                      <ChevronDown className="w-3 h-3 transition-transform duration-200" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 transition-transform duration-200" />
+                    )}
+                  </Button>
+                  <Globe className="w-4 h-4 text-blue-600 flex-shrink-0 transition-colors duration-150 group-hover:text-blue-700" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate">
+                      <SearchHighlight text={connection.name} searchTerm={searchTerm} />
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      端口: <SearchHighlight text={connection.port.toString()} searchTerm={searchTerm} />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-in-out">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-4 w-4 p-0"
-                          onClick={async (e) => {
+                          className="h-6 w-6 p-0 hover:scale-110 transition-all duration-150"
+                          onClick={(e) => {
                             e.stopPropagation()
-                            await toggleSlave(slaveKey, connection.id, slave.id)
+                            setEditingDevice(connection.id)
                           }}
                         >
-                          {expandedSlaves.has(slaveKey) ? (
-                            <ChevronDown className="w-3 h-3" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3" />
-                          )}
+                          <Settings className="w-3 h-3" />
                         </Button>
-                        <Cpu className="w-4 h-4 text-purple-600 flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium truncate">{slave.name}</div>
-                          <div className="text-xs text-muted-foreground">从机地址: {slave.slaveid}</div>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>编辑连接</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 hover:scale-110 transition-all duration-150"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditingDevice("new-connection")
+                          }}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>新建连接</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+
+                {/* Level 2: Slaves (only show if connection is expanded) */}
+                {expandedConnections.has(connection.id) && (
+                  <div className="ml-6">
+                    {filteredSlaves.length === 0 ? (
+                      /* 无从机时显示新增按钮 */
+                      <div className="p-2 flex justify-end">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-6 w-6 p-0 flex-shrink-0"
-                              aria-haspopup="menu"
-                              aria-label="从机操作"
-                              data-testid={`slave-actions-${slave.id}`}
-                              onClick={(e) => e.stopPropagation()}
+                              className="text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                              onClick={() => setEditingSlave({ connectionId: connection.id, slaveId: null })}
                             >
-                              <MoreVertical className="w-3 h-3" />
+                              <Plus className="w-4 h-4" />
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => setShowRegisterDialog({ connectionId: connection.id, slaveId: slave.id })}
-                            >
-                              新增寄存器
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setEditingSlave({ connectionId: connection.id, slaveId: slave.id })}
-                            >
-                              编辑从机
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                if (confirm("确定要删除此从机吗？")) {
-                                  deleteSlave(connection.id, slave.id)
-                                }
-                              }}
-                              className="text-red-600"
-                            >
-                              删除从机
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>添加从机</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
-
-                      {expandedSlaves.has(slaveKey) && (
-                        <div className="ml-6 space-y-1">
-                          {isSlaveLoading(slave.id) && (
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-1">
-                              <Loader2 className="w-3 h-3 animate-spin" /> 正在加载寄存器...
+                    ) : (
+                      /* 有从机时显示从机列表 */
+                      filteredSlaves.map((slave) => {
+                    const slaveKey = `${connection.id}-${slave.id}`
+                    return (
+                      <div key={slaveKey}>
+                        <div
+                          className={cn(
+                            "group flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors",
+                            selectedSlaveId === slave.id && "bg-accent",
+                          )}
+                          onClick={async () => {
+                            selectSlave(slave.id)
+                            await toggleSlave(slaveKey, connection.id, slave.id)
+                          }}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-4 w-4 p-0 hover:bg-accent/50 transition-all duration-150"
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              await toggleSlave(slaveKey, connection.id, slave.id)
+                            }}
+                          >
+                            {expandedSlaves.has(slaveKey) ? (
+                              <ChevronDown className="w-3 h-3 transition-transform duration-200" />
+                            ) : (
+                              <ChevronRight className="w-3 h-3 transition-transform duration-200" />
+                            )}
+                          </Button>
+                          <Monitor className="w-4 h-4 text-purple-600 flex-shrink-0 transition-colors duration-150 group-hover:text-purple-700" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium truncate">
+                              <SearchHighlight text={slave.name} searchTerm={searchTerm} />
                             </div>
-                          )}
-                          {getSlaveError(slave.id) && (
-                            <div className="text-xs text-red-600 px-2 py-1">加载失败：{getSlaveError(slave.id)}</div>
-                          )}
-                          {/* Show register types when not loading */}
-                          {(!isSlaveLoading(slave.id)) && ["保持寄存器", "输入寄存器", "线圈", "离散输入"].map((registerType) => {
-                            const registersOfType = getRegistersByType(connection.id, slave.id, registerType)
-                            const isSelectedRegisterType =
-                              selectedConnectionId === connection.id &&
-                              selectedSlaveId === slave.id &&
-                              selectedRegisterType === registerType
-
-                            return (
-                              <div
-                                key={registerType}
-                                className={cn(
-                                  "flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors",
-                                  registersOfType.length === 0 && "opacity-80",
-                                  isSelectedRegisterType && "bg-primary/10 border border-primary/20",
-                                )}
-                                onClick={() => {
-                                  openRegisterTab(connection.id, slave.id, slave.name, connection.name, registerType)
-                                }}
-                              >
-                                <div className="w-4" />
-                                <MemoryStick
-                                  className={cn(
-                                    "w-4 h-4 flex-shrink-0",
-                                    isSelectedRegisterType ? "text-primary" : "text-emerald-600",
-                                  )}
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <div
-                                    className={cn(
-                                      "text-sm font-medium truncate",
-                                      isSelectedRegisterType && "text-primary font-semibold",
-                                    )}
-                                  >
-                                    {registerType}
-                                  </div>
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {(() => {
-                                      // 根据寄存器类型显示功能码标签
-                                      const typeMap: Record<string, { read: string[], write: string[] }> = {
-                                        "线圈": { read: ["01"], write: ["05", "15"] },
-                                        "离散输入": { read: ["02"], write: [] },
-                                        "输入寄存器": { read: ["04"], write: [] },
-                                        "保持寄存器": { read: ["03"], write: ["06", "16"] }
-                                      }
-                                      const codes = typeMap[registerType] || { read: [], write: [] }
-                                      return (
-                                        <>
-                                          {codes.read.map(code => (
-                                            <span key={`read-${code}`} className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-100 text-blue-700 border border-blue-200">
-                                              {code}
-                                            </span>
-                                          ))}
-                                          {codes.write.map(code => (
-                                            <span key={`write-${code}`} className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-red-100 text-red-700 border border-red-200">
-                                              {code}
-                                            </span>
-                                          ))}
-                                        </>
-                                      )
-                                    })()
-                                    }
-                                  </div>
-                                </div>
-                                <div
-                                  className={cn(
-                                    "px-2 py-0.5 text-[10px] rounded-full border",
-                                    registersOfType.length > 0
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                      : "bg-slate-50 text-slate-500 border-slate-200",
-                                  )}
+                            <div className="text-xs text-muted-foreground">
+                              从机地址: <SearchHighlight text={slave.slaveid.toString()} searchTerm={searchTerm} />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-in-out">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 hover:scale-110 transition-all duration-150"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEditingSlave({ connectionId: connection.id, slaveId: slave.id })
+                                  }}
                                 >
-                                  {registersOfType.length}
-                                </div>
-                                {registersOfType.length > 0 && (
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 w-6 p-0 flex-shrink-0"
-                                        aria-haspopup="menu"
-                                        aria-label="寄存器操作"
-                                        data-testid={`register-actions-${registerType}`}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <MoreVertical className="w-3 h-3" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onClick={() => {
-                                          // Find first register of this type for editing
-                                          const firstRegister = registersOfType[0]
-                                          if (firstRegister) {
-                                            setEditingRegister({
-                                              connectionId: connection.id,
-                                              slaveId: slave.id,
-                                              registerName: registerType,
-                                              registerData: firstRegister,
-                                            })
-                                          }
-                                        }}
-                                      >
-                                        编辑寄存器
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => {
-                                          if (confirm(`确定要删除所有${registerType}吗？`)) {
-                                            registersOfType.forEach((register) => {
-                                              deleteRegister(connection.id, slave.id, register.id)
-                                            })
-                                          }
-                                        }}
-                                        className="text-red-600"
-                                      >
-                                        删除寄存器
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                )}
-                              </div>
-                            )
-                          })}
+                                  <Settings className="w-3 h-3" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>编辑从机</p>
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 hover:scale-110 transition-all duration-150"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEditingSlave({ connectionId: connection.id, slaveId: null })
+                                  }}
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>新增从机</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
-            </div>
-          ))}
+
+                        {expandedSlaves.has(slaveKey) && (
+                          <div className="ml-6 space-y-1">
+                            {isSlaveLoading(slave.id) && (
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-1">
+                                <Loader2 className="w-3 h-3 animate-spin" /> 正在加载寄存器...
+                              </div>
+                            )}
+                            {getSlaveError(slave.id) && (
+                              <div className="text-xs text-red-600 px-2 py-1">加载失败：{getSlaveError(slave.id)}</div>
+                            )}
+                            
+                            {/* Register groups */}
+                            {(!isSlaveLoading(slave.id)) && (() => {
+                              const allRegisters = getAllRegisters(connection.id, slave.id)
+                              
+                              if (allRegisters.length === 0) {
+                                // 无寄存器时显示新增按钮
+                                return (
+                                  <div className="p-2 flex justify-end">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-gray-500 hover:text-emerald-600 hover:bg-emerald-50"
+                                          onClick={() => setShowRegisterDialog({ connectionId: connection.id, slaveId: slave.id })}
+                                        >
+                                          <Plus className="w-4 h-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>添加寄存器</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                )
+                              }
+                              
+                              // 有寄存器时显示寄存器组列表
+                              return allRegisters.map((register) => {
+                                const registerType = classifyRegisterType(register.startaddr)
+                                const isSelected = 
+                                  selectedConnectionId === connection.id &&
+                                  selectedSlaveId === slave.id &&
+                                  editingRegister?.registerData?.id === register.id
+
+                                return (
+                                  <div
+                                    key={register.id}
+                                    className={cn(
+                                      "group flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors",
+                                      isSelected && "bg-primary/10 border border-primary/20",
+                                    )}
+                                    onClick={() => {
+                                      openRegisterTab(connection.id, slave.id, slave.name, connection.name, registerType)
+                                    }}
+                                  >
+                                    <div className="w-4" />
+                                    <HardDrive
+                                      className={cn(
+                                        "w-4 h-4 flex-shrink-0 transition-all duration-150",
+                                        isSelected 
+                                          ? "text-primary group-hover:text-primary/80" 
+                                          : "text-emerald-600 group-hover:text-emerald-700",
+                                      )}
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <div
+                                        className={cn(
+                                          "text-sm font-medium truncate",
+                                          isSelected && "text-primary font-semibold",
+                                        )}
+                                      >
+                                        {registerType} (地址{register.startaddr})
+                                      </div>
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {(() => {
+                                          // 根据寄存器类型显示功能码标签
+                                          const typeMap: Record<string, { read: string[], write: string[] }> = {
+                                            "线圈": { read: ["01"], write: ["05", "15"] },
+                                            "离散输入": { read: ["02"], write: [] },
+                                            "输入寄存器": { read: ["04"], write: [] },
+                                            "保持寄存器": { read: ["03"], write: ["06", "16"] }
+                                          }
+                                          const codes = typeMap[registerType] || { read: [], write: [] }
+                                          return (
+                                            <>
+                                              {codes.read.map(code => (
+                                                <span key={`read-${code}`} className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                                                  {code}
+                                                </span>
+                                              ))}
+                                              {codes.write.map(code => (
+                                                <span key={`write-${code}`} className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-red-100 text-red-700 border border-red-200">
+                                                  {code}
+                                                </span>
+                                              ))}
+                                            </>
+                                          )
+                                        })()}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 ease-in-out">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0 hover:scale-110 transition-all duration-150"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setEditingRegister({
+                                                connectionId: connection.id,
+                                                slaveId: slave.id,
+                                                registerName: registerType,
+                                                registerData: register,
+                                              })
+                                            }}
+                                          >
+                                            <Settings className="w-3 h-3" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>编辑寄存器</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0 hover:scale-110 transition-all duration-150"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setShowRegisterDialog({ connectionId: connection.id, slaveId: slave.id })
+                                            }}
+                                          >
+                                            <Plus className="w-3 h-3" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>新增寄存器</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })
+          )}
         </div>
       </Card>
     </TooltipProvider>

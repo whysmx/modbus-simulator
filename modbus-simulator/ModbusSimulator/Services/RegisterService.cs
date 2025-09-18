@@ -10,17 +10,20 @@ public class RegisterService : IRegisterService
     private readonly IConnectionRepository _connectionRepository;
     private readonly ISlaveRepository _slaveRepository;
     private readonly IMemoryCache _cache;
+    private readonly ICacheService _cacheService;
 
     public RegisterService(
         IRegisterRepository registerRepository,
         IConnectionRepository connectionRepository,
         ISlaveRepository slaveRepository,
-        IMemoryCache cache)
+        IMemoryCache cache,
+        ICacheService cacheService)
     {
         _registerRepository = registerRepository;
         _connectionRepository = connectionRepository;
         _slaveRepository = slaveRepository;
         _cache = cache;
+        _cacheService = cacheService;
     }
 
     public async Task<IEnumerable<Register>> GetRegistersBySlaveIdAsync(int port, string slaveAddress)
@@ -33,13 +36,6 @@ public class RegisterService : IRegisterService
 
         // 添加调试信息
         Console.WriteLine($"[DEBUG] GetRegistersBySlaveIdAsync - Port: {port}, SlaveAddress: '{slaveAddress}' (Length: {slaveAddress.Length})");
-
-        // 使用基于端口和从机地址的缓存
-        string cacheKey = GetPortSlaveRegistersCacheKey(port, slaveAddress);
-        if (_cache.TryGetValue(cacheKey, out IEnumerable<Register> cachedRegisters))
-        {
-            return cachedRegisters;
-        }
 
         // 首先根据端口查找连接，然后根据从机地址查找从机ID
         var connections = await _connectionRepository.GetConnectionsTreeAsync();
@@ -69,6 +65,14 @@ public class RegisterService : IRegisterService
         }
 
         Console.WriteLine($"[DEBUG] Parsed slaveAddress {slaveAddress} to int {slaveAddressInt}");
+
+        // 使用规范化（十进制）从机地址作为缓存键的一部分，确保清理时能命中
+        string normalizedSlaveAddress = slaveAddressInt.ToString();
+        string cacheKey = GetPortSlaveRegistersCacheKey(port, normalizedSlaveAddress);
+        if (_cache.TryGetValue<IEnumerable<Register>>(cacheKey, out var cachedRegisters))
+        {
+            return cachedRegisters;
+        }
 
         var slave = connection.Slaves.FirstOrDefault(s => s.Slaveid == slaveAddressInt);
         if (slave == null)
@@ -136,8 +140,12 @@ public class RegisterService : IRegisterService
         {
             var result = await _registerRepository.CreateAsync(register);
             
-            // 清除相关缓存，使用端口和从站ID
-            ClearPortSlaveCache(connection.Port, slaveId);
+            // 清除相关缓存，使用从机的slaveid
+            var slave = connection.Slaves.FirstOrDefault(s => s.Id == slaveId);
+            if (slave != null)
+            {
+                _cacheService.ClearSlaveCache(connection.Port, slave.Slaveid);
+            }
             
             return result;
         }
@@ -194,8 +202,12 @@ public class RegisterService : IRegisterService
         {
             var result = await _registerRepository.UpdateAsync(register);
             
-            // 清除相关缓存，使用端口和从站ID
-            ClearPortSlaveCache(connection.Port, slaveId);
+            // 清除相关缓存，使用从机的slaveid
+            var slave = connection.Slaves.FirstOrDefault(s => s.Id == slaveId);
+            if (slave != null)
+            {
+                _cacheService.ClearSlaveCache(connection.Port, slave.Slaveid);
+            }
             
             return result;
         }
@@ -228,11 +240,15 @@ public class RegisterService : IRegisterService
 
         await _registerRepository.DeleteAsync(registerId);
         
-        // 清除相关缓存，使用端口和从站ID
-        ClearPortSlaveCache(connection.Port, slaveId);
+        // 清除相关缓存，使用从机的slaveid
+        var slave = connection.Slaves.FirstOrDefault(s => s.Id == slaveId);
+        if (slave != null)
+        {
+            _cacheService.ClearSlaveCache(connection.Port, slave.Slaveid);
+        }
     }
 
-    private async Task<Connection> ValidateConnectionAndSlaveAsync(string connectionId, string slaveId)
+    private async Task<ConnectionTree> ValidateConnectionAndSlaveAsync(string connectionId, string slaveId)
     {
         var connections = await _connectionRepository.GetConnectionsTreeAsync();
         var connection = connections.FirstOrDefault(c => c.Id == connectionId);
@@ -262,29 +278,5 @@ public class RegisterService : IRegisterService
     private string GetPortSlaveRegistersCacheKey(int port, string slaveAddress)
     {
         return $"port_slave_registers_{port}_{slaveAddress}";
-    }
-
-    private void ClearPortSlaveCache(int port, string slaveId)
-    {
-        // 根据slaveId查找对应的从机地址，清除相应的缓存
-        // 注意：这里的slaveId是UUID，我们需要找到对应的从机地址
-        try
-        {
-            var connections = _connectionRepository.GetConnectionsTreeAsync().Result;
-            var connection = connections.FirstOrDefault(c => c.Port == port);
-            if (connection != null)
-            {
-                var slave = connection.Slaves.FirstOrDefault(s => s.Id == slaveId);
-                if (slave != null)
-                {
-                    string cacheKey = GetPortSlaveRegistersCacheKey(port, slave.Slaveid.ToString());
-                    _cache.Remove(cacheKey);
-                }
-            }
-        }
-        catch
-        {
-            // 如果清除缓存失败，忽略错误（缓存会自动过期）
-        }
     }
 }

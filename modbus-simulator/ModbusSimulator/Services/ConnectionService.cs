@@ -6,10 +6,12 @@ namespace ModbusSimulator.Services;
 public class ConnectionService : IConnectionService
 {
     private readonly IConnectionRepository _connectionRepository;
+    private readonly ICacheService _cacheService;
 
-    public ConnectionService(IConnectionRepository connectionRepository)
+    public ConnectionService(IConnectionRepository connectionRepository, ICacheService cacheService)
     {
         _connectionRepository = connectionRepository;
+        _cacheService = cacheService;
     }
 
     public async Task<IEnumerable<ConnectionTree>> GetConnectionsTreeAsync()
@@ -126,6 +128,9 @@ public class ConnectionService : IConnectionService
             throw new ArgumentException("连接ID不能为空", nameof(id));
         }
 
+        // 清除相关的寄存器缓存
+        _cacheService.ClearConnectionCache(id);
+        
         await _connectionRepository.DeleteAsync(id);
     }
 }

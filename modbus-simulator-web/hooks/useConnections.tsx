@@ -47,6 +47,7 @@ type ConnectionAction =
     }
   | { type: "CLOSE_TAB"; payload: number }
   | { type: "SET_ACTIVE_TAB"; payload: number }
+  | { type: "UPDATE_TAB_NAMES"; payload: { connectionId: string; slaveId?: string; connectionName?: string; slaveName?: string } }
   | { type: "MARK_AS_CHANGED"; payload: { key: string; data: any } }
   | { type: "CLEAR_UNSAVED_CHANGES" }
   | { type: "SET_SLAVE_LOADING"; payload: { slaveId: string; loading: boolean } }
@@ -86,9 +87,18 @@ function connectionReducer(state: ConnectionState, action: ConnectionAction): Co
     case "SET_CONNECTIONS":
       console.log("[v0] Setting connections in reducer:", action.payload)
       console.log("[v0] Previous state connections:", state.connections)
-      const newState = { ...state, connections: action.payload, loading: false }
+      const newState = { 
+        ...state, 
+        connections: action.payload, 
+        loading: false,
+        // 清理所有缓存状态，确保与新连接数据同步
+        loadedSlaves: new Set(),
+        loadingSlaves: new Set(),
+        slaveErrors: new Map()
+      }
       console.log("[v0] New state connections:", newState.connections)
       console.log("[v0] State update complete, connections length:", newState.connections.length)
+      console.log("[v0] Cleared cache states: loadedSlaves, loadingSlaves, slaveErrors")
       return newState
     case "SET_SELECTED_CONNECTION":
       return { ...state, selectedConnectionId: action.payload }
@@ -107,8 +117,17 @@ function connectionReducer(state: ConnectionState, action: ConnectionAction): Co
       )
 
       if (existingIndex >= 0) {
+        // Update existing tab with latest names in case they have changed
+        const updatedTabs = [...state.openTabs]
+        updatedTabs[existingIndex] = {
+          ...updatedTabs[existingIndex],
+          slaveName: action.payload.slaveName,
+          connectionName: action.payload.connectionName,
+        }
+        
         return {
           ...state,
+          openTabs: updatedTabs,
           activeTabIndex: existingIndex,
           selectedRegisterType: action.payload.registerType,
           selectedConnectionId: action.payload.connectionId,
@@ -124,6 +143,25 @@ function connectionReducer(state: ConnectionState, action: ConnectionAction): Co
         selectedConnectionId: action.payload.connectionId,
         selectedSlaveId: action.payload.slaveId,
       }
+    }
+    case "UPDATE_TAB_NAMES": {
+      const { connectionId, slaveId, connectionName, slaveName } = action.payload
+      const updatedTabs = state.openTabs.map(tab => {
+        // Update connection name for all tabs from this connection
+        if (tab.connectionId === connectionId) {
+          const updates: any = {}
+          if (connectionName !== undefined) {
+            updates.connectionName = connectionName
+          }
+          // Update slave name only for tabs from this specific slave
+          if (slaveId && tab.slaveId === slaveId && slaveName !== undefined) {
+            updates.slaveName = slaveName
+          }
+          return { ...tab, ...updates }
+        }
+        return tab
+      })
+      return { ...state, openTabs: updatedTabs }
     }
     case "CLOSE_TAB": {
       const newTabs = state.openTabs.filter((_, i) => i !== action.payload)
@@ -259,6 +297,7 @@ interface ConnectionContextType extends ConnectionState {
   clearUnsavedChanges: () => void
 
   getRegistersByType: (connectionId: string, slaveId: string, registerType: string) => Register[]
+  getAllRegisters: (connectionId: string, slaveId: string) => Register[]
   classifyRegisterType: (startaddr: number) => string
   getRegisterTypeFromRegtype: (regtype: string) => string
   // Slave register cache helpers
@@ -316,6 +355,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       try {
         await apiClient.updateConnection(id, updates)
         await loadConnections()
+        
+        // Update tab names if connection name was changed
+        if (updates.name) {
+          dispatch({ 
+            type: "UPDATE_TAB_NAMES", 
+            payload: { connectionId: id, connectionName: updates.name } 
+          })
+        }
       } catch (error) {
         dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to update connection" })
         dispatch({ type: "SET_LOADING", payload: false })
@@ -331,82 +378,50 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       try {
         await apiClient.deleteConnection(id)
         await loadConnections()
+        
+        // 级联清理相关状态
         if (state.selectedConnectionId === id) {
           dispatch({ type: "SET_SELECTED_CONNECTION", payload: null })
         }
+        
+        // 如果选中的从机属于被删除的连接，清空从机选择
+        const deletedConnection = state.connections.find(conn => conn.id === id)
+        if (deletedConnection && state.selectedSlaveId) {
+          const slaveInDeletedConnection = deletedConnection.slaves.find(slave => slave.id === state.selectedSlaveId)
+          if (slaveInDeletedConnection) {
+            dispatch({ type: "SET_SELECTED_SLAVE", payload: null })
+            dispatch({ type: "SET_SELECTED_REGISTER_TYPE", payload: null })
+          }
+        }
+        
+        // 关闭所有属于该连接的标签页
+        const tabsToClose: number[] = []
+        state.openTabs.forEach((tab, index) => {
+          if (tab.connectionId === id) {
+            tabsToClose.push(index)
+          }
+        })
+        // 从后往前关闭，避免索引混乱
+        tabsToClose.reverse().forEach(index => {
+          dispatch({ type: "CLOSE_TAB", payload: index })
+        })
+        
+        // 清理属于该连接下所有从机的缓存状态
+        if (deletedConnection) {
+          deletedConnection.slaves.forEach(slave => {
+            dispatch({ type: "SET_SLAVE_LOADED", payload: { slaveId: slave.id, loaded: false } })
+            dispatch({ type: "SET_SLAVE_LOADING", payload: { slaveId: slave.id, loading: false } })
+            dispatch({ type: "SET_SLAVE_ERROR", payload: { slaveId: slave.id, error: null } })
+          })
+        }
+        
       } catch (error) {
         dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to delete connection" })
         dispatch({ type: "SET_LOADING", payload: false })
       }
     },
-    [loadConnections, state.selectedConnectionId],
+    [loadConnections, state.selectedConnectionId, state.selectedSlaveId, state.connections, state.openTabs],
   )
-
-  const addSlave = useCallback(
-    async (connectionId: string, slaveData: Omit<Slave, "id" | "connid">) => {
-      dispatch({ type: "SET_LOADING", payload: true })
-      dispatch({ type: "SET_ERROR", payload: null })
-      try {
-        console.log("[v0] addSlave called with:", { connectionId, slaveData })
-        const result = await apiClient.createSlave(connectionId, slaveData)
-        console.log("[v0] apiClient.createSlave result:", result)
-        console.log("[v0] Slave created successfully, reloading connections...")
-        await loadConnections()
-        console.log("[v0] Connections reloaded after slave creation")
-      } catch (error) {
-        console.error("[v0] Error creating slave:", error)
-        console.error("[v0] Error details:", error instanceof Error ? error.message : error)
-        console.error("[v0] Error stack:", error instanceof Error ? error.stack : 'No stack trace')
-        dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to create slave" })
-        dispatch({ type: "SET_LOADING", payload: false })
-      }
-    },
-    [loadConnections],
-  )
-
-  const updateSlave = useCallback(
-    async (connectionId: string, slaveId: string, updates: Partial<Slave>) => {
-      dispatch({ type: "SET_LOADING", payload: true })
-      dispatch({ type: "SET_ERROR", payload: null })
-      try {
-        await apiClient.updateSlave(connectionId, slaveId, updates)
-        await loadConnections()
-      } catch (error) {
-        dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to update slave" })
-        dispatch({ type: "SET_LOADING", payload: false })
-      }
-    },
-    [loadConnections],
-  )
-
-  const deleteSlave = useCallback(
-    async (connectionId: string, slaveId: string) => {
-      dispatch({ type: "SET_LOADING", payload: true })
-      dispatch({ type: "SET_ERROR", payload: null })
-      try {
-        await apiClient.deleteSlave(connectionId, slaveId)
-        await loadConnections()
-        if (state.selectedSlaveId === slaveId) {
-          dispatch({ type: "SET_SELECTED_SLAVE", payload: null })
-        }
-      } catch (error) {
-        dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to delete slave" })
-        dispatch({ type: "SET_LOADING", payload: false })
-      }
-    },
-    [loadConnections, state.selectedSlaveId],
-  )
-
-  const loadRegisters = useCallback(async (connectionId: string, slaveId: string): Promise<Register[]> => {
-    try {
-      return await apiClient.getRegisters(connectionId, slaveId)
-    } catch (error) {
-      dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to load registers" })
-      return []
-    }
-  }, [])
-
-
 
   const loadRegistersForSlave = useCallback(
     async (connectionId: string, slaveId: string, force = false): Promise<Register[]> => {
@@ -448,6 +463,104 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     },
     [state.loadedSlaves, state.connections],
   )
+
+  const addSlave = useCallback(
+    async (connectionId: string, slaveData: Omit<Slave, "id" | "connid">) => {
+      dispatch({ type: "SET_LOADING", payload: true })
+      dispatch({ type: "SET_ERROR", payload: null })
+      try {
+        console.log("[v0] addSlave called with:", { connectionId, slaveData })
+        const result = await apiClient.createSlave(connectionId, slaveData)
+        console.log("[v0] apiClient.createSlave result:", result)
+        console.log("[v0] Slave created successfully, reloading connections...")
+        await loadConnections()
+        console.log("[v0] Connections reloaded after slave creation")
+      } catch (error) {
+        console.error("[v0] Error creating slave:", error)
+        console.error("[v0] Error details:", error instanceof Error ? error.message : error)
+        console.error("[v0] Error stack:", error instanceof Error ? error.stack : 'No stack trace')
+        dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to create slave" })
+        dispatch({ type: "SET_LOADING", payload: false })
+      }
+    },
+    [loadConnections],
+  )
+
+  const updateSlave = useCallback(
+    async (connectionId: string, slaveId: string, updates: Partial<Slave>) => {
+      dispatch({ type: "SET_LOADING", payload: true })
+      dispatch({ type: "SET_ERROR", payload: null })
+      try {
+        await apiClient.updateSlave(connectionId, slaveId, updates)
+        await loadConnections()
+        
+        // 更新标签页名称（如果从机名称发生变化）
+        if (updates.name) {
+          dispatch({ 
+            type: "UPDATE_TAB_NAMES", 
+            payload: { connectionId, slaveId, slaveName: updates.name } 
+          })
+        }
+        
+        // 强制重新加载该从机的寄存器数据，确保数据同步
+        console.log("[v0] Forcing reload of registers for updated slave:", slaveId)
+        await loadRegistersForSlave(connectionId, slaveId, true)
+        
+      } catch (error) {
+        dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to update slave" })
+        dispatch({ type: "SET_LOADING", payload: false })
+      }
+    },
+    [loadConnections, loadRegistersForSlave],
+  )
+
+  const deleteSlave = useCallback(
+    async (connectionId: string, slaveId: string) => {
+      dispatch({ type: "SET_LOADING", payload: true })
+      dispatch({ type: "SET_ERROR", payload: null })
+      try {
+        await apiClient.deleteSlave(connectionId, slaveId)
+        await loadConnections()
+        
+        // 级联清理相关状态
+        if (state.selectedSlaveId === slaveId) {
+          dispatch({ type: "SET_SELECTED_SLAVE", payload: null })
+          dispatch({ type: "SET_SELECTED_REGISTER_TYPE", payload: null })
+        }
+        
+        // 关闭所有属于该从机的标签页
+        const tabsToClose: number[] = []
+        state.openTabs.forEach((tab, index) => {
+          if (tab.connectionId === connectionId && tab.slaveId === slaveId) {
+            tabsToClose.push(index)
+          }
+        })
+        // 从后往前关闭，避免索引混乱
+        tabsToClose.reverse().forEach(index => {
+          dispatch({ type: "CLOSE_TAB", payload: index })
+        })
+        
+        // 清理该从机的缓存状态
+        dispatch({ type: "SET_SLAVE_LOADED", payload: { slaveId, loaded: false } })
+        dispatch({ type: "SET_SLAVE_LOADING", payload: { slaveId, loading: false } })
+        dispatch({ type: "SET_SLAVE_ERROR", payload: { slaveId, error: null } })
+        
+      } catch (error) {
+        dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to delete slave" })
+        dispatch({ type: "SET_LOADING", payload: false })
+      }
+    },
+    [loadConnections, state.selectedSlaveId, state.openTabs],
+  )
+
+  const loadRegisters = useCallback(async (connectionId: string, slaveId: string): Promise<Register[]> => {
+    try {
+      return await apiClient.getRegisters(connectionId, slaveId)
+    } catch (error) {
+      dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "Failed to load registers" })
+      return []
+    }
+  }, [])
 
   const addRegister = useCallback(
     async (connectionId: string, slaveId: string, registerData: Omit<Register, "id" | "slaveid">) => {
@@ -606,6 +719,15 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [getConnectionById, classifyRegisterType],
   )
 
+  const getAllRegisters = useCallback(
+    (connectionId: string, slaveId: string) => {
+      const connection = getConnectionById(connectionId)
+      const slave = connection?.slaves.find((s) => s.id === slaveId)
+      return slave?.registers || []
+    },
+    [getConnectionById],
+  )
+
 
 
   const contextValue: ConnectionContextType = {
@@ -638,6 +760,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     markAsChanged,
     clearUnsavedChanges,
     getRegistersByType,
+    getAllRegisters,
     classifyRegisterType,
     getRegisterTypeFromRegtype,
     isSlaveLoading: (slaveId: string) => state.loadingSlaves.has(slaveId),

@@ -62,3 +62,6 @@ modbus-simulator/.vs/
 **/.vs/
 
 *.vsidx
+
+# Claude Code PM
+.claude/

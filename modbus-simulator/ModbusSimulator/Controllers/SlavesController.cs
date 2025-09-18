@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ModbusSimulator.Models;
-using ModbusSimulator.Repositories;
+using ModbusSimulator.Services;
 
 namespace ModbusSimulator.Controllers;
 
@@ -8,11 +8,11 @@ namespace ModbusSimulator.Controllers;
 [Route("api/connections/{connectionId}/slaves")]
 public class SlavesController : ControllerBase
 {
-    private readonly ISlaveRepository _slaveRepository;
+    private readonly ISlaveService _slaveService;
     
-    public SlavesController(ISlaveRepository slaveRepository)
+    public SlavesController(ISlaveService slaveService)
     {
-        _slaveRepository = slaveRepository;
+        _slaveService = slaveService;
     }
     
     [HttpPost]
@@ -25,13 +25,7 @@ public class SlavesController : ControllerBase
         
         try
         {
-            var slave = new Slave 
-            { 
-                Connid = connectionId, 
-                Name = request.Name, 
-                Slaveid = request.Slaveid 
-            };
-            var created = await _slaveRepository.CreateAsync(slave);
+            var created = await _slaveService.CreateSlaveAsync(connectionId, request);
             return StatusCode(201, created);
         }
         catch (KeyNotFoundException ex)
@@ -58,14 +52,7 @@ public class SlavesController : ControllerBase
         
         try
         {
-            var slave = new Slave 
-            { 
-                Id = slaveId, 
-                Connid = connectionId, 
-                Name = request.Name, 
-                Slaveid = request.Slaveid 
-            };
-            var updated = await _slaveRepository.UpdateAsync(slave);
+            var updated = await _slaveService.UpdateSlaveAsync(connectionId, slaveId, request);
             return Ok(updated);
         }
         catch (KeyNotFoundException ex)
@@ -83,7 +70,7 @@ public class SlavesController : ControllerBase
     {
         try
         {
-            await _slaveRepository.DeleteAsync(slaveId);
+            await _slaveService.DeleteSlaveAsync(connectionId, slaveId);
             return NoContent();
         }
         catch (KeyNotFoundException ex)

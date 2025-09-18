@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useConnections } from "@/hooks/useConnections"
-import { Trash2 } from "lucide-react"
+import { Trash2, X, Check } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface SlaveConfigDialogProps {
   open: boolean
@@ -86,8 +87,10 @@ export function SlaveConfigDialog({ open, onOpenChange, connectionId, slaveId }:
 
   const handleDelete = () => {
     if (connectionId && slaveId) {
-      deleteSlave(connectionId, slaveId)
-      onOpenChange(false)
+      if (confirm('确定要删除这个从机吗？此操作无法撤销。')) {
+        deleteSlave(connectionId, slaveId)
+        onOpenChange(false)
+      }
     }
   }
 
@@ -95,7 +98,7 @@ export function SlaveConfigDialog({ open, onOpenChange, connectionId, slaveId }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "编辑从站" : "新建从站"}</DialogTitle>
+          <DialogTitle>{isEditing ? "编辑从机" : "新增从机"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -124,17 +127,41 @@ export function SlaveConfigDialog({ open, onOpenChange, connectionId, slaveId }:
           </div>
 
           <DialogFooter className="flex justify-between">
-            {isEditing && (
-              <Button type="button" variant="destructive" onClick={handleDelete}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                删除
-              </Button>
-            )}
+            <div className="flex-1">
+              {isEditing && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button type="button" variant="destructive" size="icon" onClick={handleDelete}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>删除</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                取消
-              </Button>
-              <Button type="submit">{isEditing ? "保存" : "创建"}</Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="outline" size="icon" onClick={() => onOpenChange(false)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>取消</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="submit" size="icon">
+                    <Check className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isEditing ? "保存" : "创建"}</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </DialogFooter>
         </form>
