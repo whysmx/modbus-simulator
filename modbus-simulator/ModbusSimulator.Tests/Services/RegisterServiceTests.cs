@@ -180,7 +180,13 @@ public class RegisterServiceTests : IDisposable
         // Arrange
         var connectionId = "test-connection-id";
         var slaveId = "test-slave-id";
-        var request = new CreateRegisterRequest { Startaddr = 40001, Hexdata = "ABCD" };
+        var request = new CreateRegisterRequest
+        {
+            Startaddr = 40001,
+            Hexdata = "ABCD",
+            Names = "寄存器A",
+            Coefficients = "0.1,0.2"
+        };
 
         var connections = new List<ConnectionTree>
         {
@@ -200,7 +206,9 @@ public class RegisterServiceTests : IDisposable
             Id = "generated-register-id",
             Slaveid = slaveId,
             Startaddr = 40001,
-            Hexdata = "ABCD"
+            Hexdata = "ABCD",
+            Names = "寄存器A",
+            Coefficients = "0.1,0.2"
         };
         _mockRegisterRepository.Setup(r => r.CreateAsync(It.IsAny<Register>())).ReturnsAsync(expectedRegister);
 
@@ -210,7 +218,53 @@ public class RegisterServiceTests : IDisposable
         // Assert
         Assert.Equal(expectedRegister, result);
         _mockRegisterRepository.Verify(r => r.CreateAsync(It.Is<Register>(reg =>
-            reg.Slaveid == slaveId && reg.Startaddr == 40001 && reg.Hexdata == "ABCD")), Times.Once);
+            reg.Slaveid == slaveId &&
+            reg.Startaddr == 40001 &&
+            reg.Hexdata == "ABCD" &&
+            reg.Names == "寄存器A" &&
+            reg.Coefficients == "0.1,0.2")), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateRegisterAsync_NullNamesOrCoefficients_ShouldFallbackToEmptyString()
+    {
+        // Arrange
+        var connectionId = "test-connection-id";
+        var slaveId = "test-slave-id";
+        var request = new CreateRegisterRequest
+        {
+            Startaddr = 40001,
+            Hexdata = "ABCD",
+            Names = null!,
+            Coefficients = null!
+        };
+
+        var connections = new List<ConnectionTree>
+        {
+            new ConnectionTree
+            {
+                Id = connectionId,
+                Name = "Test Connection",
+                Port = 502,
+                Slaves = new List<Slave> { new Slave { Id = slaveId, Name = "Test Slave", Slaveid = 1 } }
+            }
+        };
+
+        _mockConnectionRepository.Setup(r => r.GetConnectionsTreeAsync()).ReturnsAsync(connections);
+
+        _mockRegisterRepository
+            .Setup(r => r.CreateAsync(It.IsAny<Register>()))
+            .ReturnsAsync((Register reg) => reg);
+
+        // Act
+        var result = await _service.CreateRegisterAsync(connectionId, slaveId, request);
+
+        // Assert
+        Assert.Equal(string.Empty, result.Names);
+        Assert.Equal(string.Empty, result.Coefficients);
+        _mockRegisterRepository.Verify(r => r.CreateAsync(It.Is<Register>(reg =>
+            reg.Names == string.Empty &&
+            reg.Coefficients == string.Empty)), Times.Once);
     }
 
     [Theory]

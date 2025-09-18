@@ -104,7 +104,9 @@ public class RegisterRepositoryTests : IDisposable
         {
             Slaveid = slaveId,
             Startaddr = 40001,
-            Hexdata = "ABCD1234"
+            Hexdata = "ABCD1234",
+            Names = "寄存器A",
+            Coefficients = "0.1,0.2"
         };
         await _repository.CreateAsync(register);
 
@@ -116,6 +118,8 @@ public class RegisterRepositoryTests : IDisposable
         Assert.Equal(slaveId, returnedRegister.Slaveid);
         Assert.Equal(40001, returnedRegister.Startaddr);
         Assert.Equal("ABCD1234", returnedRegister.Hexdata);
+        Assert.Equal("寄存器A", returnedRegister.Names);
+        Assert.Equal("0.1,0.2", returnedRegister.Coefficients);
     }
 
     [Fact]
@@ -194,7 +198,9 @@ public class RegisterRepositoryTests : IDisposable
         {
             Slaveid = slaveId,
             Startaddr = 40001,
-            Hexdata = "ABCD1234"
+            Hexdata = "ABCD1234",
+            Names = "寄存器A",
+            Coefficients = "0.1,0.2"
         };
 
         // Act
@@ -206,11 +212,15 @@ public class RegisterRepositoryTests : IDisposable
         Assert.Equal(slaveId, result.Slaveid);
         Assert.Equal(40001, result.Startaddr);
         Assert.Equal("ABCD1234", result.Hexdata);
+        Assert.Equal("寄存器A", result.Names);
+        Assert.Equal("0.1,0.2", result.Coefficients);
 
         // 验证数据库中确实创建了记录
-        var count = await _connection.QuerySingleAsync<int>(
-            "SELECT COUNT(1) FROM registers WHERE hexdata = @Hexdata", new { Hexdata = "ABCD1234" });
-        Assert.Equal(1, count);
+        var stored = await _connection.QuerySingleAsync<Register>(
+            "SELECT id, slaveid, startaddr, hexdata, names, coefficients FROM registers WHERE id = @Id",
+            new { Id = result.Id });
+        Assert.Equal("寄存器A", stored.Names);
+        Assert.Equal("0.1,0.2", stored.Coefficients);
     }
 
     [Fact]
