@@ -133,7 +133,9 @@ public class RegisterService : IRegisterService
         {
             Slaveid = slaveId,
             Startaddr = request.Startaddr,
-            Hexdata = request.Hexdata // 保存原始数据，不做任何处理
+            Hexdata = request.Hexdata, // 保存原始数据，不做任何处理
+            Names = request.Names ?? string.Empty,
+            Coefficients = request.Coefficients ?? string.Empty
         };
 
         try
