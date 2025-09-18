@@ -58,7 +58,8 @@ public class ConnectionService : IConnectionService
 
         var connection = new Connection
         {
-            Name = request.Name.Trim()
+            Name = request.Name.Trim(),
+            ProtocolType = request.ProtocolType
         };
 
         try
@@ -99,7 +100,8 @@ public class ConnectionService : IConnectionService
         {
             Id = id,
             Name = request.Name.Trim(),
-            Port = request.Port
+            Port = request.Port,
+            ProtocolType = request.ProtocolType
         };
 
         try
